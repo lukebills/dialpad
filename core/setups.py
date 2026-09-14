@@ -25,13 +25,49 @@ class Setups:
         self.generation = 0
         self.last_switch = 0
         self.error = ''
+        self.load_failed = False
         try:
             if self.path.exists():
                 if self.path.stat().st_size > 262144:
                     raise ValueError('Saved setups file is too large.')
                 self.profiles = self.checked(json.loads(self.path.read_text()))
         except (ValueError, OSError, TypeError, KeyError) as exc:
+            self.load_failed = True
             self.error = 'Could not load saved setups: ' + str(exc)
+
+    def install_defaults(self, profiles):
+        """Seed bundled layouts once, preserving edits, removals and existing profiles."""
+        if self.load_failed:
+            return  # Do not overwrite an unreadable user library.
+        defaults = self.checked(profiles)
+        marker = self.path.with_name('preloaded-layouts.json')
+        try:
+            installed = json.loads(marker.read_text()) if marker.exists() else []
+            if not isinstance(installed, list) or any(not isinstance(v, str) for v in installed):
+                raise ValueError('Invalid preload history.')
+            installed = set(installed)
+            updated = copy.deepcopy(self.profiles)
+            layer = updated[0]['layer'] if updated else 1
+            for profile in defaults:
+                identity = profile['starter_id']
+                if identity in installed:
+                    continue
+                if any(p.get('starter_id') == identity or p['name'] == profile['name'] for p in updated):
+                    installed.add(identity)
+                    continue
+                if len(updated) >= 8:
+                    continue  # Still available in Starting layout; retry next launch if space opens.
+                profile['layer'] = layer
+                updated.append(profile)
+                installed.add(identity)
+            if updated != self.profiles:
+                self.save(updated)
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            temporary = marker.with_suffix('.tmp')
+            temporary.write_text(json.dumps(sorted(installed)))
+            temporary.replace(marker)
+        except (OSError, ValueError, TypeError) as exc:
+            self.error = 'Could not preload all layouts: ' + str(exc)
 
     def checked(self, profiles):
         if not isinstance(profiles, list) or len(profiles) > 8:

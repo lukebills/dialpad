@@ -3,10 +3,12 @@ import json
 from pathlib import Path
 import subprocess
 import urllib.request
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 bundle = ROOT / 'dist/Dialpad.app/Contents'
-server = subprocess.Popen([str(bundle / 'MacOS/Dialpad'), '--no-browser'], stdout=subprocess.PIPE, text=True)
+settings = tempfile.TemporaryDirectory()
+server = subprocess.Popen([str(bundle / 'MacOS/Dialpad'), '--no-browser', '--settings-dir', settings.name], stdout=subprocess.PIPE, text=True)
 try:
     url = server.stdout.readline().strip()
     assert url.startswith('http://127.0.0.1:')
@@ -25,3 +27,4 @@ try:
 finally:
     server.terminate()
     server.wait(timeout=5)
+    settings.cleanup()

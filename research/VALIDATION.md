@@ -26,3 +26,9 @@ Added persistent saved setups, explicit preview/enable, app-managed F18 cycling,
 - Mac bundle built successfully and passed `codesign --verify --deep --strict`.
 
 No keypad bindings were written during this feature's implementation or verification. Physical dial-triggered switching, notification timing during a real transfer, and resulting keyboard actions still require an explicit enable and physical test. Each switch programs bindings; this is not a firmware layer-switch command. Firmware write endurance is unknown, so the UI describes this as occasional setup switching.
+
+## Preloaded everyday layouts
+
+Bundled Media, Web browsing, Word desktop and Apple Mail layouts now populate a fresh Mac saved-layout library automatically. Existing libraries gain missing defaults within the eight-slot limit. The Windows catalog includes the first three; Apple Mail is Mac-only. Per-layout preload history retains user edits, renames and removals; unreadable user libraries are not overwritten.
+
+34 unit tests pass, including fresh-install preloading, all bundled profiles passing the packet validator, upgrade preservation, layer matching, restart/edit/removal persistence, and full/corrupt library handling. The rebuilt packaged browser smoke test passed with an isolated temporary settings directory: all four defaults appeared without Save, their editors loaded correctly, Media showed volume on its dial, and Apple Mail retained the user's Flow chord. Existing review, export/import, saved-cycle and responsive checks passed. All hardware Apply requests remained blocked. The rebuilt Mac bundle passed strict deep code-signature verification. No physical keypad changes or target-app shortcut execution were performed.

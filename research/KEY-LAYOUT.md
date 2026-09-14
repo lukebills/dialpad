@@ -62,3 +62,22 @@ Elgato profiles combine hotkeys, text, dial actions, and other actions into reus
 - Keep actual wheel events distinct from Up/Down keys: arrows can edit text or navigate history instead of scrolling.
 - Show keyboard, mouse-wheel, and mouse-button actions separately; retain a clear unsupported state where the hardware protocol cannot encode an action.
 - Test in a scratch text field, then the target coding app, before claiming that a programmed profile works.
+
+## Preloaded everyday layouts
+
+The Mac app now preloads these four editable layouts into saved setups. They are appended on upgrade without replacing existing profiles; preload history preserves later edits/removals. New profiles use the existing first profile's hardware layer (or layer 1 on a fresh install). Windows includes Media, Web browsing and Word; Apple Mail is explicitly Mac-only.
+
+| Layout | Keys 1–6 | Dial rotation | Standalone dial press |
+| --- | --- | --- | --- |
+| Media | Play/pause, Previous track, Next track, Mute, Volume down, Volume up | Volume down/up | Mute |
+| Web browsing | Address bar, New tab, Back, Forward, Reload, Find on page | Scroll up/down | Tab |
+| Word desktop | Wispr Flow, New paragraph, Bold, Undo, Paste, Save | Scroll up/down | Tab |
+| Apple Mail | Wispr Flow, New message, Reply, Forward, Paste, Get new mail | Scroll up/down | Tab |
+
+Enabling the cycle replaces each standalone dial press with F18 → Next setup. It does not open or focus the target application. Media uses standard consumer HID actions; the OS/player determines support.
+
+Browser shortcuts are Cmd+L/T, Cmd+[/], Cmd+R/F on Mac, and Ctrl+L/T, Alt+Left/Right, Ctrl+R/F on Windows. Source: [Google Chrome shortcuts](https://support.google.com/chrome/answer/157179?hl=en). Other browsers require a physical compatibility check.
+
+Word uses Return, Cmd/Ctrl+B, Z, V, S and the user's Flow chord. Source: [Microsoft Word shortcuts](https://support.microsoft.com/en-au/accessibility/word/keyboard-shortcuts-in-word). The preset targets the desktop application.
+
+Apple Mail uses Cmd+N for a new message, Cmd+R to reply, Cmd+Shift+F to forward, Cmd+V to paste and Cmd+Shift+N to get new mail. Source: [Apple Mail keyboard shortcuts](https://support.apple.com/en-gb/guide/mail/mlhlb94f262b/mac). Flow retains the user's exact modifier-only Control+Command+Option hands-free shortcut.

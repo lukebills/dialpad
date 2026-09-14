@@ -8,6 +8,7 @@ const shortcut = (key, modifiers=[]) => ({type:'shortcut',key,modifiers});
 const names = {key1:'Key 1',key2:'Key 2',key3:'Key 3',key4:'Key 4',key5:'Key 5',key6:'Key 6',dial_ccw:'Dial · turn left',dial_press:'Dial · press',dial_cw:'Dial · turn right'};
 let selected='key1', profile, devices=[], preview=null, recording=false, busy=false, revision=0;
 let runtime=null, runtimePolling=false, cyclePending=false, savedFingerprint='';
+let starterLayouts={};
 const keyNames = ['NONE',...'ABCDEFGHIJKLMNOPQRSTUVWXYZ',...'1234567890', 'ENTER','ESCAPE','TAB','SPACE','BACKSPACE','DELETE','UP','DOWN','LEFT','RIGHT','HOME','END','PAGEUP','PAGEDOWN','MINUS','EQUAL','LEFTBRACKET','RIGHTBRACKET','BACKSLASH','SEMICOLON','QUOTE','GRAVE','COMMA','DOT','SLASH',...Array.from({length:24},(_,i)=>`F${i+1}`)];
 const actions = {mouse:['wheel_up','wheel_down','middle_click','left_click','right_click'],media:['volume_up','volume_down','mute','play_pause','next','previous','stop','brightness_up','brightness_down']};
 function option(value, text=value){return new Option(text,value);}
@@ -20,6 +21,13 @@ async function api(path,body){
 function describe(action){if(action.type==='shortcut')return [...action.modifiers.map(m=>({cmd:'⌘ / Win',alt:'⌥ / Alt',ctrl:'Ctrl',shift:'Shift'}[m]||m)),...(action.key==='NONE'?[]:[action.key])].join(' + ');return (action.action||action.type).replaceAll('_',' ');}
 function preset(){
  const mac=$('platform').value==='mac',kind=$('preset').value;
+ if(['media','web','word','mail'].includes(kind)){
+  const template=starterLayouts[$('platform').value]?.[kind];
+  if(!template){message('Apple Mail is available on Mac. Choose Mac to load that layout.',true);return;}
+  profile=structuredClone(template);
+  if(kind==='word'||kind==='mail')configureFlow();
+  render();message('Preloaded layout opened in the editor. Your saved version is in Your saved setups.');return;
+ }
  const labels={key1:'Wispr Flow',key2:'Enter',key3:'Escape',key4:'New line',key5:'Paste',key6:kind==='claude'?'Transcript':kind==='desktop'?'Review':'Tab',dial_ccw:'Scroll up',dial_press:'Tab',dial_cw:'Scroll down'};
  const bindings={key1:shortcut(mac?'NONE':'SPACE',mac?['ctrl','cmd','alt']:['ctrl','cmd']),key2:shortcut('ENTER'),key3:shortcut('ESCAPE'),key4:shortcut('J',['ctrl']),key5:shortcut('V',mac?['cmd']:['ctrl','shift']),key6:kind==='claude'?shortcut('O',['ctrl']):shortcut('TAB'),dial_ccw:{type:'mouse',action:'wheel_up'},dial_press:shortcut('TAB'),dial_cw:{type:'mouse',action:'wheel_down'}};
  if(kind==='desktop'){bindings.key4=shortcut('ENTER',['shift']);bindings.key5=shortcut('V',mac?['cmd']:['ctrl']);bindings.key6=shortcut('G',['ctrl','shift']);}
@@ -36,11 +44,13 @@ function configureFlow(){
 $('flow-mode').onchange=()=>{configureFlow();render();message('Flow binding updated in the editor only.');};
 function invalidate(){preview=null;revision++;}
 function render(){
+ $('flow-setting').hidden=['media','web'].some(kind=>profile.starter_id?.startsWith(kind+'-'));
+ if(profile.note)$('preset-note').textContent=profile.note;
  $('profile-name').value=profile.name;$('profile-title').textContent=profile.name;$('layer').value=profile.layer;
  $('keys').replaceChildren();
  controls.slice(0,6).forEach((c,i)=>{const b=document.createElement('button');b.className='key'+(selected===c?' selected':'');b.dataset.control=c;
  for(const [cls,text] of [['number','0'+(i+1)],['key-label',profile.labels[c]||names[c]],['key-shortcut',describe(profile.bindings[c])]]){const s=document.createElement('span');s.className=cls;s.textContent=text;b.append(s);}b.onclick=()=>select(c);$('keys').append(b);});
- document.querySelectorAll('.rotations button').forEach(b=>b.classList.toggle('selected',b.dataset.control===selected));$('dial-face').classList.toggle('selected',selected==='dial_press');
+ document.querySelectorAll('.rotations button').forEach(b=>{b.classList.toggle('selected',b.dataset.control===selected);b.querySelector('span').textContent=profile.labels[b.dataset.control]||describe(profile.bindings[b.dataset.control]);b.title=describe(profile.bindings[b.dataset.control]);});$('dial-face').classList.toggle('selected',selected==='dial_press');
  editor();invalidate();
 }
 function select(c){selected=c;recording=false;render();}
@@ -117,4 +127,6 @@ $('remove-setup').onclick=async()=>{try{const profiles=structuredClone(runtime.p
 $('enable-cycle').onclick=async()=>{try{const result=await api('setups/preview',{device_id:$('device').value});preview=result;$('review-content').textContent='Enable this cycle on hardware layer '+result.layer+'?\n\n'+result.profiles.map((p,i)=>`${i+1}. ${p.name}\n`+controls.map(c=>`${names[c]} → ${describe(p.bindings[c])}`).join('\n')).join('\n\n')+'\n\nApply sends the first setup now. Each dial press (F18) sends the next setup, replacing all nine bindings. The app must stay running. F18 on any keyboard also triggers this cycle. Firmware persistence and write endurance are unknown; this is intended for occasional setup changes.';$('review').showModal();}catch(e){message(e.message,true);}};
 $('disable-cycle').onclick=async()=>{try{showRuntime(await api('setups/disable',{}));message('Cycling stopped. The keypad keeps its last bindings. Apply a normal layout to restore the dial press.');}catch(e){message(e.message,true);}};
 $('next-setup').onclick=async()=>{if(cyclePending)return;cyclePending=true;$('next-setup').disabled=true;try{showRuntime(await api('setups/cycle',{}));}catch(e){message(e.message,true);}finally{cyclePending=false;refreshRuntime();}};
-$('platform').value=/Mac/.test(navigator.platform)?'mac':'windows';preset();refresh();refreshRuntime();setInterval(refreshRuntime,1000);
+$('platform').value=/Mac/.test(navigator.platform)?'mac':'windows';
+async function start(){try{const response=await fetch('/starters.json');if(!response.ok)throw new Error('Could not load bundled layouts.');starterLayouts=await response.json();preset();refresh();refreshRuntime();setInterval(refreshRuntime,1000);}catch(e){message(e.message,true);}}
+start();

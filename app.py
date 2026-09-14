@@ -108,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.reply(503, {'error': str(exc)})
             return
-        assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
+        assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/starters.json': ('starters.json', 'application/json; charset=utf-8')}
         if self.path not in assets:
             self.reply(404, {'error': 'Not found.'})
             return
@@ -191,10 +191,16 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(503, {'error': str(exc)})
 
 def main():
+    global SETUPS
     parser = argparse.ArgumentParser()
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--port', type=int, default=0)
+    parser.add_argument('--settings-dir', type=Path, help='Optional separate directory for saved layouts.')
     args = parser.parse_args()
+    if args.settings_dir:
+        SETUPS = Setups(validate_profile, args.settings_dir / 'setups.json')
+    catalog = json.loads((ROOT / 'ui' / 'starters.json').read_text())
+    SETUPS.install_defaults(list(catalog['mac' if sys.platform == 'darwin' else 'windows'].values()))
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     url = f'http://127.0.0.1:{server.server_port}/#{TOKEN}'
     desktop = None

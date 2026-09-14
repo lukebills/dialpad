@@ -1,0 +1,496 @@
+{
+  "mac": {
+    "media": {
+      "version": 1,
+      "name": "Media · Mac",
+      "layer": 1,
+      "starter_id": "media-mac",
+      "labels": {
+        "key1": "Play / pause",
+        "key2": "Previous track",
+        "key3": "Next track",
+        "key4": "Mute",
+        "key5": "Volume down",
+        "key6": "Volume up",
+        "dial_ccw": "Volume down",
+        "dial_press": "Mute",
+        "dial_cw": "Volume up"
+      },
+      "bindings": {
+        "key1": {
+          "type": "media",
+          "action": "play_pause"
+        },
+        "key2": {
+          "type": "media",
+          "action": "previous"
+        },
+        "key3": {
+          "type": "media",
+          "action": "next"
+        },
+        "key4": {
+          "type": "media",
+          "action": "mute"
+        },
+        "key5": {
+          "type": "media",
+          "action": "volume_down"
+        },
+        "key6": {
+          "type": "media",
+          "action": "volume_up"
+        },
+        "dial_ccw": {
+          "type": "media",
+          "action": "volume_down"
+        },
+        "dial_press": {
+          "type": "media",
+          "action": "mute"
+        },
+        "dial_cw": {
+          "type": "media",
+          "action": "volume_up"
+        }
+      },
+      "note": "System media controls. Turn the dial for volume; your active media app decides which player responds."
+    },
+    "web": {
+      "version": 1,
+      "name": "Web browsing · Mac",
+      "layer": 1,
+      "starter_id": "web-mac",
+      "labels": {
+        "key1": "Address bar",
+        "key2": "New tab",
+        "key3": "Back",
+        "key4": "Forward",
+        "key5": "Reload",
+        "key6": "Find on page",
+        "dial_ccw": "Scroll up",
+        "dial_press": "Tab",
+        "dial_cw": "Scroll down"
+      },
+      "bindings": {
+        "key1": {
+          "type": "shortcut",
+          "key": "L",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key2": {
+          "type": "shortcut",
+          "key": "T",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key3": {
+          "type": "shortcut",
+          "key": "LEFTBRACKET",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key4": {
+          "type": "shortcut",
+          "key": "RIGHTBRACKET",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key5": {
+          "type": "shortcut",
+          "key": "R",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key6": {
+          "type": "shortcut",
+          "key": "F",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "dial_ccw": {
+          "type": "mouse",
+          "action": "wheel_up"
+        },
+        "dial_press": {
+          "type": "shortcut",
+          "key": "TAB",
+          "modifiers": []
+        },
+        "dial_cw": {
+          "type": "mouse",
+          "action": "wheel_down"
+        }
+      },
+      "note": "Browser navigation shortcuts based on Chrome. Focus your browser first; verify shortcuts if you use another browser."
+    },
+    "word": {
+      "version": 1,
+      "name": "Word · Mac",
+      "layer": 1,
+      "starter_id": "word-mac",
+      "labels": {
+        "key1": "Wispr Flow",
+        "key2": "New paragraph",
+        "key3": "Bold",
+        "key4": "Undo",
+        "key5": "Paste",
+        "key6": "Save",
+        "dial_ccw": "Scroll up",
+        "dial_press": "Tab",
+        "dial_cw": "Scroll down"
+      },
+      "bindings": {
+        "key1": {
+          "type": "shortcut",
+          "key": "NONE",
+          "modifiers": [
+            "ctrl",
+            "cmd",
+            "alt"
+          ]
+        },
+        "key2": {
+          "type": "shortcut",
+          "key": "ENTER",
+          "modifiers": []
+        },
+        "key3": {
+          "type": "shortcut",
+          "key": "B",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key4": {
+          "type": "shortcut",
+          "key": "Z",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key5": {
+          "type": "shortcut",
+          "key": "V",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key6": {
+          "type": "shortcut",
+          "key": "S",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "dial_ccw": {
+          "type": "mouse",
+          "action": "wheel_up"
+        },
+        "dial_press": {
+          "type": "shortcut",
+          "key": "TAB",
+          "modifiers": []
+        },
+        "dial_cw": {
+          "type": "mouse",
+          "action": "wheel_down"
+        }
+      },
+      "note": "For Microsoft Word desktop. Click in the document before dictating or editing. Turn the dial to scroll."
+    },
+    "mail": {
+      "version": 1,
+      "name": "Apple Mail · Mac",
+      "layer": 1,
+      "starter_id": "mail-mac",
+      "labels": {
+        "key1": "Wispr Flow",
+        "key2": "New message",
+        "key3": "Reply",
+        "key4": "Forward",
+        "key5": "Paste",
+        "key6": "Get new mail",
+        "dial_ccw": "Scroll up",
+        "dial_press": "Tab",
+        "dial_cw": "Scroll down"
+      },
+      "bindings": {
+        "key1": {
+          "type": "shortcut",
+          "key": "NONE",
+          "modifiers": [
+            "ctrl",
+            "cmd",
+            "alt"
+          ]
+        },
+        "key2": {
+          "type": "shortcut",
+          "key": "N",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key3": {
+          "type": "shortcut",
+          "key": "R",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key4": {
+          "type": "shortcut",
+          "key": "F",
+          "modifiers": [
+            "cmd",
+            "shift"
+          ]
+        },
+        "key5": {
+          "type": "shortcut",
+          "key": "V",
+          "modifiers": [
+            "cmd"
+          ]
+        },
+        "key6": {
+          "type": "shortcut",
+          "key": "N",
+          "modifiers": [
+            "cmd",
+            "shift"
+          ]
+        },
+        "dial_ccw": {
+          "type": "mouse",
+          "action": "wheel_up"
+        },
+        "dial_press": {
+          "type": "shortcut",
+          "key": "TAB",
+          "modifiers": []
+        },
+        "dial_cw": {
+          "type": "mouse",
+          "action": "wheel_down"
+        }
+      },
+      "note": "For Apple Mail on Mac. Select a message before Reply or Forward, and focus the message body before dictating. Turn the dial to scroll."
+    }
+  },
+  "windows": {
+    "media": {
+      "version": 1,
+      "name": "Media · Windows",
+      "layer": 1,
+      "starter_id": "media-windows",
+      "labels": {
+        "key1": "Play / pause",
+        "key2": "Previous track",
+        "key3": "Next track",
+        "key4": "Mute",
+        "key5": "Volume down",
+        "key6": "Volume up",
+        "dial_ccw": "Volume down",
+        "dial_press": "Mute",
+        "dial_cw": "Volume up"
+      },
+      "bindings": {
+        "key1": {
+          "type": "media",
+          "action": "play_pause"
+        },
+        "key2": {
+          "type": "media",
+          "action": "previous"
+        },
+        "key3": {
+          "type": "media",
+          "action": "next"
+        },
+        "key4": {
+          "type": "media",
+          "action": "mute"
+        },
+        "key5": {
+          "type": "media",
+          "action": "volume_down"
+        },
+        "key6": {
+          "type": "media",
+          "action": "volume_up"
+        },
+        "dial_ccw": {
+          "type": "media",
+          "action": "volume_down"
+        },
+        "dial_press": {
+          "type": "media",
+          "action": "mute"
+        },
+        "dial_cw": {
+          "type": "media",
+          "action": "volume_up"
+        }
+      },
+      "note": "System media controls. Turn the dial for volume; your active media app decides which player responds."
+    },
+    "web": {
+      "version": 1,
+      "name": "Web browsing · Windows",
+      "layer": 1,
+      "starter_id": "web-windows",
+      "labels": {
+        "key1": "Address bar",
+        "key2": "New tab",
+        "key3": "Back",
+        "key4": "Forward",
+        "key5": "Reload",
+        "key6": "Find on page",
+        "dial_ccw": "Scroll up",
+        "dial_press": "Tab",
+        "dial_cw": "Scroll down"
+      },
+      "bindings": {
+        "key1": {
+          "type": "shortcut",
+          "key": "L",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "key2": {
+          "type": "shortcut",
+          "key": "T",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "key3": {
+          "type": "shortcut",
+          "key": "LEFT",
+          "modifiers": [
+            "alt"
+          ]
+        },
+        "key4": {
+          "type": "shortcut",
+          "key": "RIGHT",
+          "modifiers": [
+            "alt"
+          ]
+        },
+        "key5": {
+          "type": "shortcut",
+          "key": "R",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "key6": {
+          "type": "shortcut",
+          "key": "F",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "dial_ccw": {
+          "type": "mouse",
+          "action": "wheel_up"
+        },
+        "dial_press": {
+          "type": "shortcut",
+          "key": "TAB",
+          "modifiers": []
+        },
+        "dial_cw": {
+          "type": "mouse",
+          "action": "wheel_down"
+        }
+      },
+      "note": "Browser navigation shortcuts based on Chrome. Focus your browser first; verify shortcuts if you use another browser."
+    },
+    "word": {
+      "version": 1,
+      "name": "Word · Windows",
+      "layer": 1,
+      "starter_id": "word-windows",
+      "labels": {
+        "key1": "Wispr Flow",
+        "key2": "New paragraph",
+        "key3": "Bold",
+        "key4": "Undo",
+        "key5": "Paste",
+        "key6": "Save",
+        "dial_ccw": "Scroll up",
+        "dial_press": "Tab",
+        "dial_cw": "Scroll down"
+      },
+      "bindings": {
+        "key1": {
+          "type": "shortcut",
+          "key": "SPACE",
+          "modifiers": [
+            "ctrl",
+            "cmd"
+          ]
+        },
+        "key2": {
+          "type": "shortcut",
+          "key": "ENTER",
+          "modifiers": []
+        },
+        "key3": {
+          "type": "shortcut",
+          "key": "B",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "key4": {
+          "type": "shortcut",
+          "key": "Z",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "key5": {
+          "type": "shortcut",
+          "key": "V",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "key6": {
+          "type": "shortcut",
+          "key": "S",
+          "modifiers": [
+            "ctrl"
+          ]
+        },
+        "dial_ccw": {
+          "type": "mouse",
+          "action": "wheel_up"
+        },
+        "dial_press": {
+          "type": "shortcut",
+          "key": "TAB",
+          "modifiers": []
+        },
+        "dial_cw": {
+          "type": "mouse",
+          "action": "wheel_down"
+        }
+      },
+      "note": "For Microsoft Word desktop. Click in the document before dictating or editing. Turn the dial to scroll."
+    }
+  }
+}

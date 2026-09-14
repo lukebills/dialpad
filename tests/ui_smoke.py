@@ -3,10 +3,12 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
-server = subprocess.Popen(([str(ROOT / 'dist/Dialpad.app/Contents/MacOS/Dialpad'), '--no-browser'] if '--packaged' in sys.argv else [sys.executable, str(ROOT / 'app.py'), '--no-browser']), stdout=subprocess.PIPE, text=True)
+settings = tempfile.TemporaryDirectory()
+server = subprocess.Popen(([str(ROOT / 'dist/Dialpad.app/Contents/MacOS/Dialpad'), '--no-browser'] if '--packaged' in sys.argv else [sys.executable, str(ROOT / 'app.py'), '--no-browser']) + ['--settings-dir', settings.name], stdout=subprocess.PIPE, text=True)
 try:
     url = server.stdout.readline().strip()
     assert url.startswith('http://127.0.0.1:')
@@ -20,6 +22,23 @@ try:
         expect(page.locator('#connection')).not_to_have_text('Checking keypad…')
         assert page.locator('.key').count()==6
         assert page.locator('#connection').inner_text()=='Keypad connected'
+        expect(page.locator('#saved-setup option')).to_have_count(4)
+        for name in ['Media', 'Web browsing', 'Word', 'Apple Mail']:
+            assert name in page.locator('#saved-setup').inner_text()
+        for kind, first_key in [('media','play_pause'),('web','L'),('word','NONE'),('mail','NONE')]:
+            page.locator('#preset').select_option(kind)
+            page.locator('#load-preset').click()
+            page.locator('[data-control="key1"]').click()
+            assert page.locator('#action' if kind=='media' else '#key').input_value() == first_key
+            if kind=='media':
+                expect(page.locator('#flow-setting')).to_be_hidden()
+                expect(page.locator('[data-control="dial_ccw"] span')).to_have_text('Volume down')
+            if kind=='mail':
+                page.locator('[data-control="key2"]').click()
+                assert page.locator('#key').input_value() == 'N'
+        page.locator('#preset').select_option('claude')
+        page.locator('#load-preset').click()
+        page.locator('[data-control="key1"]').click()
         page.locator('#flow-mode').select_option('ptt')
         assert page.locator('#key').input_value()=='NONE'
         assert page.locator('[data-control="key1"] .key-shortcut').inner_text()=='Ctrl + ⌥ / Alt'
@@ -98,3 +117,4 @@ try:
 finally:
     server.terminate()
     server.wait(timeout=5)
+    settings.cleanup()
