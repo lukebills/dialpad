@@ -40,11 +40,11 @@ try:
         page.locator('#preset').select_option('desktop')
         page.locator('#load-preset').click()
         page.locator('[data-control="key1"]').click()
-        assert page.locator('#key').input_value()=='SPACE'
+        assert page.locator('#key').input_value()=='NONE'
         with page.expect_download() as download:
             page.locator('#export').click()
         exported = json.loads(Path(download.value.path()).read_text())
-        assert exported['bindings']['key1']['modifiers']==['ctrl','alt']
+        assert exported['bindings']['key1']['modifiers']==['ctrl','cmd','alt']
         exported['name']='Imported test'
         page.locator('#file').set_input_files({'name':'profile.json','mimeType':'application/json','buffer':json.dumps(exported).encode()})
         expect(page.locator('#profile-name')).to_have_value('Imported test')

@@ -20,7 +20,7 @@ function describe(action){if(action.type==='shortcut')return [...action.modifier
 function preset(){
  const mac=$('platform').value==='mac',kind=$('preset').value;
  const labels={key1:'Wispr Flow',key2:'Enter',key3:'Escape',key4:'New line',key5:'Paste',key6:kind==='claude'?'Transcript':kind==='desktop'?'Review':'Tab',dial_ccw:'Scroll up',dial_press:'Tab',dial_cw:'Scroll down'};
- const bindings={key1:shortcut('SPACE',mac?['ctrl','alt']:['ctrl','cmd']),key2:shortcut('ENTER'),key3:shortcut('ESCAPE'),key4:shortcut('J',['ctrl']),key5:shortcut('V',mac?['cmd']:['ctrl','shift']),key6:kind==='claude'?shortcut('O',['ctrl']):shortcut('TAB'),dial_ccw:{type:'mouse',action:'wheel_up'},dial_press:shortcut('TAB'),dial_cw:{type:'mouse',action:'wheel_down'}};
+ const bindings={key1:shortcut(mac?'NONE':'SPACE',mac?['ctrl','cmd','alt']:['ctrl','cmd']),key2:shortcut('ENTER'),key3:shortcut('ESCAPE'),key4:shortcut('J',['ctrl']),key5:shortcut('V',mac?['cmd']:['ctrl','shift']),key6:kind==='claude'?shortcut('O',['ctrl']):shortcut('TAB'),dial_ccw:{type:'mouse',action:'wheel_up'},dial_press:shortcut('TAB'),dial_cw:{type:'mouse',action:'wheel_down'}};
  if(kind==='desktop'){bindings.key4=shortcut('ENTER',['shift']);bindings.key5=shortcut('V',mac?['cmd']:['ctrl']);bindings.key6=shortcut('G',['ctrl','shift']);}
  profile={version:1,name:(kind==='claude'?'Claude Code':kind==='codex'?'Codex terminal':'Codex desktop')+' · '+(mac?'Mac':'Windows'),layer:1,labels,bindings};
  configureFlow();
@@ -28,9 +28,9 @@ function preset(){
 }
 function configureFlow(){
  const mac=$('platform').value==='mac',ptt=$('flow-mode').value==='ptt';
- profile.bindings.key1=shortcut(ptt?'NONE':'SPACE',mac?['ctrl','alt']:['ctrl','cmd']);
+ profile.bindings.key1=shortcut(mac||ptt?'NONE':'SPACE',mac?(ptt?['ctrl','alt']:['ctrl','cmd','alt']):['ctrl','cmd']);
  profile.labels.key1=ptt?'Flow · hold to talk':'Wispr Flow';
- $('preset-note').textContent=mac?(ptt?'Your Flow push-to-talk shortcut is Control + Option (or Apple Fn). This key sends Control + Option only. Holding and releasing must be tested on this keypad before relying on push to talk.':'Your current Flow hands-free shortcuts are Fn + Space or double-tap Fn. This keypad cannot send Apple Fn. To use this layout, add Control + Option + Space to Hands-free mode in Flow settings. Tap to start; tap again to stop and paste.'):(ptt?'Verify Control + Windows is assigned to push to talk in Flow. Holding and releasing must be tested on this keypad.':'Verify Control + Windows + Space is assigned to Hands-free mode in Flow. Tap to start; tap again to stop and paste.');
+ $('preset-note').textContent=mac?(ptt?'Your Flow push-to-talk shortcut is Control + Option (or Apple Fn). This key sends Control + Option only. Holding and releasing must be tested on this keypad before relying on push to talk.':'Your Flow hands-free shortcut is Control + Command + Option, with no extra key. Tap to start; tap again to stop and paste. Your other Flow triggers are Fn + Space, middle click, or double-tap Fn.'):(ptt?'Verify Control + Windows is assigned to push to talk in Flow. Holding and releasing must be tested on this keypad.':'Verify Control + Windows + Space is assigned to Hands-free mode in Flow. Tap to start; tap again to stop and paste.');
 }
 $('flow-mode').onchange=()=>{configureFlow();render();message('Flow binding updated in the editor only.');};
 function invalidate(){preview=null;revision++;}

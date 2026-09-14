@@ -11,6 +11,8 @@ class ProtocolTests(unittest.TestCase):
     def test_modifier_only_wispr_chord(self):
         reports = encode_binding('key1', {'type': 'shortcut', 'key': 'NONE', 'modifiers': ['ctrl', 'alt']})
         self.assertEqual(reports[2], fixture('03 01 11 01 01 05 00'))
+        handsfree = encode_binding('key1', {'type': 'shortcut', 'key': 'NONE', 'modifiers': ['ctrl', 'cmd', 'alt']})
+        self.assertEqual(handsfree[2], fixture('03 01 11 01 01 0d 00'))
         with self.assertRaises(ValueError):
             encode_binding('key1', {'type': 'shortcut', 'key': 'NONE', 'modifiers': []})
 
