@@ -1,0 +1,141 @@
+{
+  "archive_sha256": "d99cacb26eeca84c82b5087e70cd2325cc715da9743ff85e741ce38e823cd3c8",
+  "archive_bytes": 446544,
+  "files": [
+    {
+      "name": "Release/app.publish/",
+      "bytes": 0
+    },
+    {
+      "name": "Release/app.publish/MINI KeyBoard.exe",
+      "bytes": 218096,
+      "sha256": "cd20ac6e9ca5d6786acd8ae1a7240420a8f838d79f5d2c5ca7dc5dce2d5c6385",
+      "pe_machine": "0x14c",
+      "certificate_table_size": 1008,
+      "clr_header_size": 72,
+      "hid_indicators": [
+        "HidD_FreePreparsedData",
+        "HidD_GetAttributes",
+        "HidD_GetHidGuid",
+        "HidD_GetPreparsedData",
+        "HidD_GetSerialNumberString",
+        "HidLibrary",
+        "ReadFile",
+        "WriteFile"
+      ]
+    },
+    {
+      "name": "Release/en-US/",
+      "bytes": 0
+    },
+    {
+      "name": "Release/en-US/MINI KeyBoard.resources.dll",
+      "bytes": 3584,
+      "sha256": "dde0308965aafd94cf3983aeaa3707b279683515b9c97f4aaa8c66a015e7a070",
+      "pe_machine": "0x14c",
+      "certificate_table_size": 0,
+      "clr_header_size": 72,
+      "hid_indicators": []
+    },
+    {
+      "name": "Release/HidLibrary.dll",
+      "bytes": 45056,
+      "sha256": "8bafd3e1c6f88822dbf738c929f7d3162d08243067c69c4a85e52ed13a78d12b",
+      "pe_machine": "0x14c",
+      "certificate_table_size": 0,
+      "clr_header_size": 72,
+      "hid_indicators": [
+        "%HidLibrary.HidDevice+<ReadAsync>d__49",
+        "&HidLibrary.HidDevice+<WriteAsync>d__64",
+        "+HidLibrary.HidDevice+<ReadReportAsync>d__54",
+        ",HidLibrary.HidDevice+<WriteReportAsync>d__70",
+        "0HidLibrary.HidFastReadDevice+<FastReadAsync>d__5",
+        "7HidLibrary.HidFastReadDevice+<FastReadReportAsync>d__10",
+        "C:\\Users\\Administrator\\Desktop\\HidLibrary-master\\HidLibrary-master\\src\\HidLibrary\\obj\\Debug\\net40\\HidLibrary.pdb",
+        "HidD_FlushQueue",
+        "HidD_FreePreparsedData",
+        "HidD_GetAttributes",
+        "HidD_GetFeature",
+        "HidD_GetHidGuid",
+        "HidD_GetInputReport",
+        "HidD_GetManufacturerString",
+        "HidD_GetNumInputBuffers",
+        "HidD_GetPreparsedData",
+        "HidD_GetProductString",
+        "HidD_GetSerialNumberString",
+        "HidD_SetFeature",
+        "HidD_SetNumInputBuffers",
+        "HidD_SetOutputReport",
+        "HidLibrary",
+        "HidLibrary.dll",
+        "ReadFile",
+        "WriteFile"
+      ]
+    },
+    {
+      "name": "Release/HidLibrary.pdb",
+      "bytes": 138752,
+      "sha256": "ff33c180707989f3cff1136b131af640da01999e44cf2d05c1d8bc204633210f"
+    },
+    {
+      "name": "Release/MINI KeyBoard.application",
+      "bytes": 1829,
+      "sha256": "50a1a15cd4c355233f421f1443f9c4186f745e7e7d97201e74a351ea9a10412e"
+    },
+    {
+      "name": "Release/MINI KeyBoard.exe",
+      "bytes": 217088,
+      "sha256": "4ae53d3a40921e4f57444c489fa1b38fe91a2e907feda17630450fc97a7cd7b1",
+      "pe_machine": "0x14c",
+      "certificate_table_size": 0,
+      "clr_header_size": 72,
+      "hid_indicators": [
+        "HidD_FreePreparsedData",
+        "HidD_GetAttributes",
+        "HidD_GetHidGuid",
+        "HidD_GetPreparsedData",
+        "HidD_GetSerialNumberString",
+        "HidLibrary",
+        "ReadFile",
+        "WriteFile"
+      ]
+    },
+    {
+      "name": "Release/MINI KeyBoard.exe.config",
+      "bytes": 856,
+      "sha256": "523055b9660fe832629c179c388b99bd76bc87d8fe96c8acd864aec9b539cbb8"
+    },
+    {
+      "name": "Release/MINI KeyBoard.exe.manifest",
+      "bytes": 6467,
+      "sha256": "6dceed116ec9218c531dbf243a6f7fa3b9db393bd873e581daddfff1bbf60644"
+    },
+    {
+      "name": "Release/MINI KeyBoard.pdb",
+      "bytes": 153088,
+      "sha256": "4a9bb819fb3562642fa4ef59b3a224313f56b55e83664abc4e4430e11f9ac325"
+    },
+    {
+      "name": "Release/Theraot.Core.dll",
+      "bytes": 787968,
+      "sha256": "4406b6affde4fbec5c47aed24d0050c0148d94772d3f2c11e6c96ce2ad527799",
+      "pe_machine": "0x14c",
+      "certificate_table_size": 0,
+      "clr_header_size": 72,
+      "hid_indicators": []
+    },
+    {
+      "name": "Release/zh-CN/",
+      "bytes": 0
+    },
+    {
+      "name": "Release/zh-CN/MINI KeyBoard.resources.dll",
+      "bytes": 7168,
+      "sha256": "e3df7b8cdb2d0a7d3f92490fd3ca7afc7fa99cad327f31f3ffd6d8d6fcd52e24",
+      "pe_machine": "0x14c",
+      "certificate_table_size": 0,
+      "clr_header_size": 72,
+      "hid_indicators": []
+    }
+  ]
+}
