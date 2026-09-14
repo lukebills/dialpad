@@ -108,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.reply(503, {'error': str(exc)})
             return
-        assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/starters.json': ('starters.json', 'application/json; charset=utf-8')}
+        assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/starters.json': ('starters.json', 'application/json; charset=utf-8'), '/icon.svg': ('icon.svg', 'image/svg+xml')}
         if self.path not in assets:
             self.reply(404, {'error': 'Not found.'})
             return

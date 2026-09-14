@@ -32,3 +32,9 @@ No keypad bindings were written during this feature's implementation or verifica
 Bundled Media, Web browsing, Word desktop and Apple Mail layouts now populate a fresh Mac saved-layout library automatically. Existing libraries gain missing defaults within the eight-slot limit. The Windows catalog includes the first three; Apple Mail is Mac-only. Per-layout preload history retains user edits, renames and removals; unreadable user libraries are not overwritten.
 
 34 unit tests pass, including fresh-install preloading, all bundled profiles passing the packet validator, upgrade preservation, layer matching, restart/edit/removal persistence, and full/corrupt library handling. The rebuilt packaged browser smoke test passed with an isolated temporary settings directory: all four defaults appeared without Save, their editors loaded correctly, Media showed volume on its dial, and Apple Mail retained the user's Flow chord. Existing review, export/import, saved-cycle and responsive checks passed. All hardware Apply requests remained blocked. The rebuilt Mac bundle passed strict deep code-signature verification. No physical keypad changes or target-app shortcut execution were performed.
+
+## App icon and quiet menu-bar updates
+
+Added an original six-key-and-dial SVG, rendered PNG, multi-resolution Mac ICNS and Windows ICO. Mac packaging references Dialpad.icns; the native host loads the matching PNG for its Dock icon, and the editor uses the SVG. The menu bar has a matching monochrome keypad symbol. Removed automatic floating notification panels entirely; setup changes and error details remain in the menu bar, tooltip and editor. The optional user-opened layout panel remains available.
+
+All 34 unit tests, packaged browser smoke and native Mac smoke passed. Verified the bundle icon reference and native icon asset, and strict deep code-signature verification passed. No hardware writes were performed.

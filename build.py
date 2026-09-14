@@ -9,9 +9,11 @@ import sys
 ROOT = Path(__file__).parent.resolve()
 args = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--name', 'Dialpad',
         '--onedir', '--windowed', '--add-data', f'{ROOT / "ui"}:ui',
+        '--add-data', f'{ROOT / "assets" / "app-icon.png"}:assets',
         '--add-data', f'{ROOT / "core" / "THIRD_PARTY_LICENSE.txt"}:licenses',
         '--hidden-import', 'core.protocol', '--hidden-import', 'core.transport']
 if sys.platform == 'darwin':
+    args += ['--icon', str(ROOT / 'assets' / 'Dialpad.icns')]
     args += ['--exclude-module', 'core.windows_desktop', '--exclude-module', 'tkinter']
     native = ROOT / 'build' / 'native' / 'DialpadDesktop'
     native.parent.mkdir(parents=True, exist_ok=True)
@@ -36,6 +38,7 @@ if sys.platform == 'darwin':
 elif sys.platform != 'win32':
     raise SystemExit('Build on macOS or Windows to create a portable app for that OS.')
 else:
+    args += ['--icon', str(ROOT / 'assets' / 'Dialpad.ico'), '--add-data', f'{ROOT / "assets" / "Dialpad.ico"}:assets']
     args += ['--hidden-import', 'core.windows_desktop', '--hidden-import', 'tkinter']
 args.append(str(ROOT / 'app.py'))
 subprocess.run(args, cwd=ROOT, check=True)

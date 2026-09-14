@@ -11,13 +11,9 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     var status: NSStatusItem!
     var panel: NSPanel!
     var panelText: NSTextField!
-    var toast: NSPanel!
-    var toastText: NSTextField!
     var hotKey: EventHotKeyRef?
     var handler: EventHandlerRef?
     var timer: Timer?
-    var toastTimer: Timer?
-    var generation = -1
     var enabled = false
     var cycling = false
     var polling = false
@@ -50,6 +46,8 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let icon = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().appendingPathComponent("assets/app-icon.png")
+        if let image = NSImage(contentsOf: icon) { NSApp.applicationIconImage = image }
         let menu = NSMenu()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "Quit Dialpad", action: #selector(quit), keyEquivalent: "q").target = self
@@ -73,10 +71,19 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         showEditor()
         (panel, panelText) = makePanel(width: 350, height: 315)
         panel.isMovableByWindowBackground = true
-        (toast, toastText) = makePanel(width: 350, height: 85)
-        toast.ignoresMouseEvents = true
         if UserDefaults.standard.bool(forKey: "floatingLayout") { panel.orderFrontRegardless() }
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let menuIcon = NSImage(size: NSSize(width: 24, height: 18), flipped: false) { _ in
+            NSColor.black.setFill()
+            for x in [1, 6, 11] {
+                for y in [4, 10] { NSBezierPath(roundedRect: NSRect(x: x, y: y, width: 4, height: 4), xRadius: 1, yRadius: 1).fill() }
+            }
+            NSBezierPath(ovalIn: NSRect(x: 17, y: 6, width: 6, height: 6)).fill()
+            return true
+        }
+        menuIcon.isTemplate = true
+        status.button?.image = menuIcon
+        status.button?.imagePosition = .imageLeading
         refreshMenu()
 
         var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -90,7 +97,6 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         let registered = installed == noErr ? RegisterEventHotKey(UInt32(kVK_F18), 0, EventHotKeyID(signature: 0x4449414C, id: 1), GetApplicationEventTarget(), 0, &hotKey) : installed
         request("desktop-ready", body: ["ready": registered == noErr, "error": "F18 is unavailable. Close another Dialpad instance or app using F18, then reopen."]) { state, error in
             if let state = state { self.update(state) }
-            if registered != noErr { self.showToast("Dial shortcut unavailable", "F18 is already in use. See the editor.") }
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in self.poll() }
     }
@@ -143,9 +149,6 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
 
     func update(_ state: [String: Any]) {
         enabled = state["enabled"] as? Bool ?? false
-        let nextGeneration = state["generation"] as? Int ?? 0
-        let changed = generation != nextGeneration
-        generation = nextGeneration
         if let profile = state["current"] as? [String: Any], enabled {
             currentName = profile["name"] as? String ?? "Setup"
             let labels = profile["labels"] as? [String: String] ?? [:]
@@ -155,24 +158,24 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
                 return "\(i)   \(labels[key] ?? key)   ·   \(describe(bindings[key] ?? [:]))"
             }
             summary = currentName + "\n\n" + rows.joined(separator: "\n\n") + "\n\n↶ \(describe(bindings["dial_ccw"] ?? [:]))   ↷ \(describe(bindings["dial_cw"] ?? [:]))\nPress dial → Next setup"
-            if changed { showToast(currentName, "Layout sent · press the dial for the next setup") }
         } else {
             currentName = "Cycling off"
             let error = state["error"] as? String ?? ""
+            if !error.isEmpty { currentName = "Needs attention" }
             summary = error.isEmpty ? "Setup cycling is off.\n\nOpen the editor to save and enable setups.\n\nThe keypad keeps its last written bindings. Reapply a normal layout to restore the dial press." : error
-            if changed && !error.isEmpty { showToast("Dialpad needs attention", error) }
         }
         panelText.stringValue = summary
         refreshMenu()
     }
 
     func refreshMenu() {
-        status.button?.title = "◉ " + String(currentName.prefix(24))
+        status.button?.title = " " + String(currentName.prefix(24))
         status.button?.toolTip = summary
         let menu = NSMenu()
         let heading = NSMenuItem(title: currentName, action: nil, keyEquivalent: "")
         menu.addItem(heading)
-        for line in summary.components(separatedBy: "\n").filter({ !$0.isEmpty }).dropFirst() {
+        let lines = summary.components(separatedBy: "\n").filter({ !$0.isEmpty })
+        for line in (lines.first == currentName ? Array(lines.dropFirst()) : lines) {
             menu.addItem(NSMenuItem(title: line, action: nil, keyEquivalent: ""))
         }
         menu.addItem(.separator())
@@ -186,20 +189,19 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         status.menu = menu
     }
 
-    func showToast(_ title: String, _ detail: String) {
-        toastText.stringValue = title + "\n" + detail
-        toast.orderFrontRegardless()
-        toastTimer?.invalidate()
-        toastTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in self.toast.orderOut(nil) }
-    }
-
     @objc func nextSetup() {
         guard enabled && !cycling else { return }
         cycling = true
         request("setups/cycle", body: [:]) { state, error in
             self.cycling = false
             if let state = state, state["generation"] != nil { self.update(state) }
-            if let error = error { self.showToast("Setup did not change", error); self.poll() }
+            if let error = error {
+                self.currentName = "Switch failed"
+                self.summary = error
+                self.panelText.stringValue = error
+                self.refreshMenu()
+                self.poll()
+            }
         }
     }
     @objc func showEditor() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }

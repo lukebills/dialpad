@@ -26,7 +26,7 @@ Profiles are **not** read from the hardware. Applying replaces the selected cont
 1. **Media, Web browsing, Word and Apple Mail are already saved on first launch on Mac.** You do not need to create them. Upgrading adds them alongside existing setups, with room for eight total. Windows includes Media, Web browsing and Word; Apple Mail is Mac-only.
 2. Choose a saved setup and **Edit saved** to customize it, or add a coding layout with **Save current setup**. Their list order is the cycling order. Use the same hardware layer for every setup. Your edits and removals survive restarting; Starting layout retains the bundled originals if you want to restore one.
 3. Select the keypad and click **Review & enable dial cycling**. Review the entire cycle, then **Apply to keypad**. This immediately sends the first setup and replaces the dial press with **F18 → Next setup**.
-4. Press the dial to send the next setup. A brief Mac on-screen notification shows the new layout. The menu bar, optional floating panel, and editor header display the last successfully transferred layout. Turn the dial to use that setup's scrolling actions. Physical results still need testing.
+4. Press the dial to send the next setup. The Mac menu-bar label and editor header update quietly to show the last successfully transferred layout. Hover or click the menu-bar icon for its bindings; an optional floating panel is also available. Turn the dial to use that setup's scrolling actions. Physical results still need testing.
 
 Cycling is handled by the running app, not an internal firmware layer-switch command. Each switch rewrites all nine bindings on the same layer. The protocol provides no read-back, persistence guarantee, or write-endurance specification; use it for occasional setup changes. Allow at least 1.2 seconds between presses; presses during a transfer are ignored. A failed transfer stops cycling and marks the device state unknown, with no retry or rollback.
 
@@ -36,7 +36,7 @@ The app reserves **F18 globally** while it is open. F18 from another keyboard al
 
 The Media dial adjusts volume; the other everyday dials scroll. Word and Apple Mail retain Wispr Flow on Key 1. Browser shortcuts target Chrome, Word targets its desktop app, and Mail targets Apple Mail. Focus the target application before using its bindings. See [the complete everyday key layout](research/KEY-LAYOUT.md#preloaded-everyday-layouts).
 
-Saved setups live in `~/Library/Application Support/Dialpad/setups.json` on Mac or `%APPDATA%/Dialpad/setups.json` on Windows. Export individual profiles for sharing or backup. A neighboring `preloaded-layouts.json` file records which defaults have already been installed, so deleted defaults stay deleted. If eight slots are already occupied, bundled originals remain in Starting layout and missing defaults are added on a later launch if space is freed. Unsaved editor changes are still temporary. The native Mac notifications are brief floating banners, not Notification Center history.
+Saved setups live in `~/Library/Application Support/Dialpad/setups.json` on Mac or `%APPDATA%/Dialpad/setups.json` on Windows. Export individual profiles for sharing or backup. A neighboring `preloaded-layouts.json` file records which defaults have already been installed, so deleted defaults stay deleted. If eight slots are already occupied, bundled originals remain in Starting layout and missing defaults are added on a later launch if space is freed. Unsaved editor changes are still temporary. Setup changes and errors appear in the menu bar and editor, without popup notifications.
 
 ## Portability and current limits
 
@@ -59,6 +59,8 @@ python3 -m venv .venv
 Mac builds also require the Xcode command-line tools to compile the Swift desktop host. Source-only launches use the browser unless the native host is supplied; `--no-browser` is available for test harnesses.
 
 On Windows use `.venv\Scripts\python.exe` in place of `.venv/bin/python`. Build on each target OS; PyInstaller does not cross-compile. Windows output is `dist/Dialpad/` (keep the EXE and its supporting files together). Mac output is `dist/Dialpad.app`. The GitHub Actions workflow can build both after this repository is hosted on GitHub; no remote is configured automatically.
+
+The app icon is an original editable SVG in `ui/icon.svg`. Generated Mac, Windows and PNG icons are in `assets/`; `assets/render_icon.py` regenerates them with Playwright/Chrome and the macOS icon tools. The native host also uses a small template keypad symbol in the menu bar.
 
 The frontend is plain HTML/CSS/JavaScript. `app.py` handles authenticated local API requests, validation, and one-use expiring write previews. `core/protocol.py` encodes validated packets without device I/O. `core/transport.py` accesses only the supported keypad ID and reports failures without automatic retries. Tests mock hardware; they do not program the keypad.
 
