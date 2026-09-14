@@ -55,7 +55,9 @@ try:
         assert 'Key 2  →  ENTER' in page.locator('#review-content').text_content()
         page.get_by_role('button',name='Cancel',exact=True).click()
         page.locator('[data-control="dial_ccw"]').click()
-        assert page.locator('#action').input_value()=='wheel_up'
+        assert page.locator('#key').input_value()=='UP'
+        page.locator('[data-control="dial_cw"]').click()
+        assert page.locator('#key').input_value()=='DOWN'
         page.locator('#preset').select_option('desktop')
         page.locator('#load-preset').click()
         page.locator('[data-control="key1"]').click()
@@ -67,7 +69,7 @@ try:
         exported['name']='Imported test'
         page.locator('#file').set_input_files({'name':'profile.json','mimeType':'application/json','buffer':json.dumps(exported).encode()})
         expect(page.locator('#profile-name')).to_have_value('Imported test')
-        exported['bindings']['dial_ccw']['modifiers']=['ctrl']
+        exported['bindings']['dial_ccw']={'type':'mouse','action':'wheel_up','modifiers':['ctrl']}
         page.locator('#file').set_input_files({'name':'bad.json','mimeType':'application/json','buffer':json.dumps(exported).encode()})
         expect(page.locator('#message')).to_contain_text('Mouse modifiers')
         page.locator('#preset').select_option('claude')

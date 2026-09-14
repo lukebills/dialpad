@@ -17,7 +17,7 @@ The source version runs with Python 3.10+: `python3 app.py`. macOS source develo
 5. Start with **Selected control only**, click **Review changes**, verify the proposed binding, then **Apply to keypad**. Test it in the scratch area and your coding app. Key positions and wheel direction need a physical check.
 6. Export your profile to keep a copy. Import restores the editor settings; Apply writes them to the keypad.
 
-The initial layout is Wispr Flow, Enter, Escape, New line, Paste, and Transcript (Claude terminal) or Tab (Codex terminal). Dial rotation scrolls and its press sends Tab. Desktop profiles use separate shortcuts. Escape has context-specific behavior, not a universal rejection action. See [shortcut research](research/KEY-LAYOUT.md).
+The initial layout is Wispr Flow, Enter, Escape, New line, Paste, and Transcript (Claude terminal) or Tab (Codex terminal). In Claude and Codex layouts, dial rotation sends Up/Down arrow keys and its standalone press sends Tab. Desktop profiles use separate shortcuts. Escape has context-specific behavior, not a universal rejection action. See [shortcut research](research/KEY-LAYOUT.md).
 
 Profiles are **not** read from the hardware. Applying replaces the selected controls on the selected layer. The app cannot back up the existing device configuration, verify it by read-back, or automatically roll back an interrupted write. A completed transfer must be checked on the physical keypad. Layers 2 and 3 are only useful if your hardware supports switching layers. Profiles do not switch automatically with the foreground application.
 

@@ -12,8 +12,8 @@ Reviewed 14 September 2026. These are design recommendations based on current pr
 | Key 4 | New line | Ctrl+J | Ctrl+J |
 | Key 5 | Paste | Cmd+V | Ctrl+Shift+V; match the terminal's actual paste binding |
 | Key 6 | Transcript | Ctrl+O | Ctrl+O |
-| Dial left | Scroll up | Mouse wheel up | Mouse wheel up |
-| Dial right | Scroll down | Mouse wheel down | Mouse wheel down |
+| Dial left | Arrow up | Up arrow | Up arrow |
+| Dial right | Arrow down | Down arrow | Down arrow |
 | Dial press | Tab | Tab | Tab |
 
 The physical grouping follows the user's workflow: speak, send, interrupt; then compose, paste context, inspect output. Tab on dial press is a proposed convenience for navigating fields and completions. All should remain editable. Wheel direction should be reversible after a short test in the user's terminal.
@@ -81,3 +81,5 @@ Browser shortcuts are Cmd+L/T, Cmd+[/], Cmd+R/F on Mac, and Ctrl+L/T, Alt+Left/R
 Word uses Return, Cmd/Ctrl+B, Z, V, S and the user's Flow chord. Source: [Microsoft Word shortcuts](https://support.microsoft.com/en-au/accessibility/word/keyboard-shortcuts-in-word). The preset targets the desktop application.
 
 Apple Mail uses Cmd+N for a new message, Cmd+R to reply, Cmd+Shift+F to forward, Cmd+V to paste and Cmd+Shift+N to get new mail. Source: [Apple Mail keyboard shortcuts](https://support.apple.com/en-gb/guide/mail/mlhlb94f262b/mac). Flow retains the user's exact modifier-only Control+Command+Option hands-free shortcut.
+
+The user requested Up/Down arrow keys for dial rotation in all Claude and Codex starter layouts. Counterclockwise sends Up; clockwise sends Down. Media, Web browsing, Word and Apple Mail retain their existing dial actions.

@@ -28,8 +28,8 @@ function preset(){
   if(kind==='word'||kind==='mail')configureFlow();
   render();message('Preloaded layout opened in the editor. Your saved version is in Your saved setups.');return;
  }
- const labels={key1:'Wispr Flow',key2:'Enter',key3:'Escape',key4:'New line',key5:'Paste',key6:kind==='claude'?'Transcript':kind==='desktop'?'Review':'Tab',dial_ccw:'Scroll up',dial_press:'Tab',dial_cw:'Scroll down'};
- const bindings={key1:shortcut(mac?'NONE':'SPACE',mac?['ctrl','cmd','alt']:['ctrl','cmd']),key2:shortcut('ENTER'),key3:shortcut('ESCAPE'),key4:shortcut('J',['ctrl']),key5:shortcut('V',mac?['cmd']:['ctrl','shift']),key6:kind==='claude'?shortcut('O',['ctrl']):shortcut('TAB'),dial_ccw:{type:'mouse',action:'wheel_up'},dial_press:shortcut('TAB'),dial_cw:{type:'mouse',action:'wheel_down'}};
+ const labels={key1:'Wispr Flow',key2:'Enter',key3:'Escape',key4:'New line',key5:'Paste',key6:kind==='claude'?'Transcript':kind==='desktop'?'Review':'Tab',dial_ccw:'Arrow up',dial_press:'Tab',dial_cw:'Arrow down'};
+ const bindings={key1:shortcut(mac?'NONE':'SPACE',mac?['ctrl','cmd','alt']:['ctrl','cmd']),key2:shortcut('ENTER'),key3:shortcut('ESCAPE'),key4:shortcut('J',['ctrl']),key5:shortcut('V',mac?['cmd']:['ctrl','shift']),key6:kind==='claude'?shortcut('O',['ctrl']):shortcut('TAB'),dial_ccw:shortcut('UP'),dial_press:shortcut('TAB'),dial_cw:shortcut('DOWN')};
  if(kind==='desktop'){bindings.key4=shortcut('ENTER',['shift']);bindings.key5=shortcut('V',mac?['cmd']:['ctrl']);bindings.key6=shortcut('G',['ctrl','shift']);}
  profile={version:1,name:(kind==='claude'?'Claude Code':kind==='codex'?'Codex terminal':'Codex desktop')+' · '+(mac?'Mac':'Windows'),layer:1,labels,bindings};
  configureFlow();
