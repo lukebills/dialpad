@@ -53,16 +53,48 @@ try:
         expect(page.locator('#message')).to_contain_text('Mouse modifiers')
         page.locator('#preset').select_option('claude')
         page.locator('#load-preset').click()
+        # Isolate saved-setup UI testing from the user's on-disk setups.
+        saved_state = {'profiles': [], 'enabled': False, 'ready': True, 'active': None,
+                       'generation': 0, 'current': None, 'cycle_names': [], 'error': ''}
+        page.route('**/api/setups', lambda route: route.fulfill(json=saved_state))
+        def save_setups(route):
+            saved_state['profiles'] = route.request.post_data_json['profiles']
+            route.fulfill(json=saved_state)
+        page.route('**/api/setups/save', save_setups)
+        def cycle_preview(route):
+            profiles = json.loads(json.dumps(saved_state['profiles']))
+            for item in profiles:
+                item['bindings']['dial_press'] = {'type':'shortcut','key':'F18','modifiers':[]}
+            route.fulfill(json={'nonce':'mock-never-apply','layer':1,'profiles':profiles})
+        page.route('**/api/setups/preview', cycle_preview)
+        expect(page.locator('#cycle-note')).to_contain_text('Desktop dial shortcut ready')
+        page.locator('#save-setup').click()
+        expect(page.locator('#saved-setup option')).to_have_count(1)
+        page.locator('#preset').select_option('codex')
+        page.locator('#load-preset').click()
+        page.locator('#save-setup').click()
+        expect(page.locator('#saved-setup option')).to_have_count(2)
+        page.locator('#enable-cycle').click()
+        expect(page.locator('#review-content')).to_contain_text('F18')
+        expect(page.locator('#review-content')).to_contain_text('Claude Code')
+        expect(page.locator('#review-content')).to_contain_text('Codex terminal')
+        page.get_by_role('button', name='Cancel', exact=True).click()
+        page.locator('#saved-setup').select_option('0')
+        page.locator('#edit-setup').click()
+        expect(page.locator('#profile-name')).to_have_value('Claude Code · Mac')
+        page.locator('#remove-setup').click()
+        expect(page.locator('#saved-setup option')).to_have_count(1)
         page.locator('#test-input').fill('Test typing')
         page.locator('#test-input').press('Enter')
         assert 'Enter' in page.locator('#test-event').inner_text()
+        page.evaluate('window.scrollTo(0,0)')
         page.screenshot(path=str(ROOT/'research'/'ui-preview.png'),full_page=True)
         page.set_viewport_size({'width':390,'height':844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         assert not errors, errors
         page.locator('#quit').click()
         browser.close()
-        print('UI smoke passed: device discovery, editor, preview/cancel, profiles, validation, test area, responsive layout. No hardware writes.')
+        print('UI smoke passed: device discovery, editor, preview/cancel, saved setups and cycle review, profiles, validation, test area, responsive layout. No hardware writes.')
 finally:
     server.terminate()
     server.wait(timeout=5)

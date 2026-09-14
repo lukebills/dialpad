@@ -12,6 +12,12 @@ args = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--name',
         '--add-data', f'{ROOT / "core" / "THIRD_PARTY_LICENSE.txt"}:licenses',
         '--hidden-import', 'core.protocol', '--hidden-import', 'core.transport']
 if sys.platform == 'darwin':
+    args += ['--exclude-module', 'core.windows_desktop', '--exclude-module', 'tkinter']
+    native = ROOT / 'build' / 'native' / 'DialpadDesktop'
+    native.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['xcrun', 'swiftc', '-O', '-target', f'{platform.machine()}-apple-macosx12.0',
+                    str(ROOT / 'native' / 'DialpadDesktop.swift'), '-o', str(native)], check=True)
+    args += ['--add-binary', f'{native}:.']
     paths = ['/opt/homebrew/lib/libusb-1.0.dylib', '/usr/local/lib/libusb-1.0.dylib']
     lib = next((Path(p) for p in paths if Path(p).exists()), None)
     if lib is None:
@@ -29,6 +35,8 @@ if sys.platform == 'darwin':
         args += ['--add-data', f'{license_file}:licenses']
 elif sys.platform != 'win32':
     raise SystemExit('Build on macOS or Windows to create a portable app for that OS.')
+else:
+    args += ['--hidden-import', 'core.windows_desktop', '--hidden-import', 'tkinter']
 args.append(str(ROOT / 'app.py'))
 subprocess.run(args, cwd=ROOT, check=True)
 if sys.platform == 'darwin':

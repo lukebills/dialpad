@@ -18,8 +18,7 @@ the library using `ctypes.util.find_library`.
 Enumeration reads descriptors and never calls open/claim/detach/reset on USB
 devices. Explicit writes open and claim only the descriptor-matched non-boot HID
 interface with interrupt-OUT endpoint 0x02. They do not detach drivers, reset a
-device, or change its configuration. A busy interface produces an error. No input
-events are read or monitored.
+device, or change its configuration. A busy interface produces an error. The USB transport does not read input events. The desktop companion separately registers only the F18 global hotkey for explicitly enabled setup cycling.
 
 Verified on the connected Mac: raw USB descriptors identify interface 1 and a
 64-byte endpoint 0x02. Opening, claiming interface 1, releasing, and closing also

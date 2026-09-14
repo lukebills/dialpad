@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import subprocess
 import sys
 import threading
 import time
@@ -33,6 +34,13 @@ def validate_profile(profile):
     for control, action in bindings.items():
         encode_binding(control, action, layer)
     return profile
+
+from core.setups import Setups
+SETUPS = Setups(validate_profile)
+
+def profile_packets(profile):
+    from core.protocol import encode_binding
+    return [bytes(64)] + [packet for c in CONTROLS for packet in encode_binding(c, profile['bindings'][c], profile['layer'])]
 
 def make_preview(body):
     from core.protocol import encode_binding
@@ -89,6 +97,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.allowed():
             return
+        if self.path == '/api/setups':
+            with WRITE_LOCK:
+                self.reply(200, SETUPS.state())
+            return
         if self.path == '/api/devices':
             try:
                 from core.transport import list_devices
@@ -119,6 +131,35 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(200, {'valid': True})
             elif self.path == '/api/preview':
                 self.reply(200, make_preview(body))
+            elif self.path == '/api/setups/save':
+                with WRITE_LOCK:
+                    self.reply(200, SETUPS.save(body.get('profiles')))
+            elif self.path == '/api/desktop-ready':
+                with WRITE_LOCK:
+                    SETUPS.ready = body.get('ready') is True
+                    if not SETUPS.ready:
+                        SETUPS.disable(body.get('error', 'Desktop shortcut unavailable.'))
+                    self.reply(200, SETUPS.state())
+            elif self.path == '/api/setups/preview':
+                with WRITE_LOCK:
+                    profiles = SETUPS.snapshot()
+                preview = make_preview({'profile': profiles[0], 'controls': CONTROLS, 'device_id': body.get('device_id')})
+                with WRITE_LOCK:
+                    PREVIEWS[preview['nonce']]['cycle_profiles'] = profiles
+                self.reply(200, {**preview, 'profiles': profiles})
+            elif self.path == '/api/setups/cycle':
+                from core.transport import write_packets
+                # Ignore a second press while a write is in progress; never queue writes.
+                if not WRITE_LOCK.acquire(blocking=False):
+                    raise ValueError('A keypad transfer is already in progress.')
+                try:
+                    self.reply(200, SETUPS.cycle(write_packets, profile_packets))
+                finally:
+                    WRITE_LOCK.release()
+            elif self.path == '/api/setups/disable':
+                with WRITE_LOCK:
+                    SETUPS.disable()
+                    self.reply(200, SETUPS.state())
             elif self.path == '/api/apply':
                 from core.transport import write_packets
                 with WRITE_LOCK:
@@ -128,7 +169,16 @@ class Handler(BaseHTTPRequestHandler):
                     preview = PREVIEWS.pop(nonce, None)
                     if not preview or preview['expires'] < time.monotonic():
                         raise ValueError('Preview expired. Review the changes again.')
-                    result = write_packets(preview['device_id'], preview['packets'])
+                    if 'cycle_profiles' in preview and not SETUPS.ready:
+                        raise ValueError('Desktop shortcut is unavailable. Reopen the app.')
+                    SETUPS.disable()
+                    try:
+                        result = write_packets(preview['device_id'], preview['packets'])
+                    except Exception as exc:
+                        SETUPS.disable('Transfer failed; keypad state is unknown. ' + str(exc))
+                        raise
+                    if 'cycle_profiles' in preview:
+                        SETUPS.activate(preview['cycle_profiles'], preview['device_id'])
                 self.reply(200, {'result': result})
             elif self.path == '/api/quit':
                 self.reply(200, {'closed': True})
@@ -147,15 +197,31 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     url = f'http://127.0.0.1:{server.server_port}/#{TOKEN}'
+    desktop = None
     if args.no_browser:
         print(url, flush=True)
     else:
-        webbrowser.open(url)
+        native = ROOT / 'DialpadDesktop'
+        if sys.platform == 'darwin' and native.exists():
+            desktop = subprocess.Popen([str(native)], stdin=subprocess.PIPE, text=True)
+            desktop.stdin.write(url + '\n')
+            desktop.stdin.close()
+            def watch_desktop():
+                desktop.wait()
+                server.shutdown()
+            threading.Thread(target=watch_desktop, daemon=True).start()
+        elif sys.platform == 'win32':
+            from core.windows_desktop import launch
+            threading.Thread(target=launch, args=(url, server.shutdown), daemon=True).start()
+        else:
+            webbrowser.open(url)
     try:
         server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:
         pass
     finally:
+        if desktop and desktop.poll() is None:
+            desktop.terminate()
         server.server_close()
 
 if __name__ == '__main__':
