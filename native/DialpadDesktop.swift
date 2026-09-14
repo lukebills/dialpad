@@ -2,6 +2,82 @@ import Cocoa
 import WebKit
 import Carbon
 
+// One scalable diagram is shared by the menu-bar preview and floating window.
+final class KeypadPreview: NSView {
+    var profile: [String: Any]?
+    var title = "Cycling off"
+    var detail = "Enable a saved setup in the editor."
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.image)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(profile: [String: Any]?, title: String, detail: String) {
+        self.profile = profile; self.title = title; self.detail = detail
+        setAccessibilityLabel(title + ". " + detail)
+        toolTip = detail
+        needsDisplay = true
+    }
+
+    func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> NSColor {
+        NSColor(calibratedRed: red, green: green, blue: blue, alpha: 1)
+    }
+    func box(_ rect: NSRect, radius: CGFloat, fill: NSColor) {
+        fill.setFill(); NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+    }
+    func text(_ value: String, _ rect: NSRect, size: CGFloat, bold: Bool = false, centered: Bool = false, ink: NSColor? = nil, wrap: Bool = false) {
+        let style = NSMutableParagraphStyle()
+        style.alignment = centered ? .center : .left
+        style.lineBreakMode = wrap ? .byWordWrapping : .byTruncatingTail
+        (value as NSString).draw(in: rect, withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: bold ? .semibold : .regular), .foregroundColor: ink ?? color(0.16, 0.24, 0.18), .paragraphStyle: style])
+    }
+    func action(_ control: String) -> String {
+        let bindings = profile?["bindings"] as? [String: [String: Any]] ?? [:]
+        let binding = bindings[control] ?? [:]
+        if binding["type"] as? String == "shortcut" {
+            let symbols = ["ctrl":"⌃", "alt":"⌥", "cmd":"⌘", "shift":"⇧"]
+            let modifiers = (binding["modifiers"] as? [String] ?? []).map { symbols[$0] ?? $0 }.joined()
+            let key = binding["key"] as? String ?? ""
+            return modifiers + (key == "NONE" ? "" : key)
+        }
+        return (binding["action"] as? String ?? "").replacingOccurrences(of: "_", with: " ")
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        context.scaleBy(x: bounds.width / 440, y: bounds.height / 280)
+        box(NSRect(x: 0, y: 0, width: 440, height: 280), radius: 14, fill: color(0.97, 0.97, 0.94))
+        text(title, NSRect(x: 20, y: 15, width: 400, height: 25), size: 16, bold: true)
+        box(NSRect(x: 12, y: 56, width: 416, height: 181), radius: 21, fill: color(0.77, 0.81, 0.72))
+        box(NSRect(x: 12, y: 50, width: 416, height: 181), radius: 21, fill: color(0.87, 0.9, 0.83))
+        let labels = profile?["labels"] as? [String: String] ?? [:]
+        for index in 0..<6 {
+            let control = "key\(index + 1)"
+            let x = CGFloat(26 + (index % 3) * 94), y = CGFloat(66 + (index / 3) * 79)
+            box(NSRect(x: x, y: y + 4, width: 84, height: 68), radius: 9, fill: color(0.72, 0.77, 0.66))
+            box(NSRect(x: x, y: y, width: 84, height: 68), radius: 9, fill: index == 0 && profile != nil ? color(0.84, 0.93, 0.7) : color(0.98, 0.99, 0.95))
+            text("0\(index + 1)", NSRect(x: x + 7, y: y + 5, width: 65, height: 12), size: 8, ink: color(0.48, 0.55, 0.43))
+            text(labels[control] ?? "Key \(index + 1)", NSRect(x: x + 5, y: y + 22, width: 74, height: 25), size: 10, bold: true, centered: true, wrap: true)
+            text(action(control), NSRect(x: x + 4, y: y + 49, width: 76, height: 14), size: 8, centered: true)
+        }
+        color(0.61, 0.67, 0.55).setFill(); NSBezierPath(ovalIn: NSRect(x: 321, y: 85, width: 91, height: 91)).fill()
+        color(0.24, 0.32, 0.26).setFill(); NSBezierPath(ovalIn: NSRect(x: 321, y: 80, width: 91, height: 91)).fill()
+        color(0.76, 0.87, 0.65).setStroke()
+        let tick = NSBezierPath(); tick.move(to: NSPoint(x: 366.5, y: 89)); tick.line(to: NSPoint(x: 366.5, y: 103)); tick.lineWidth = 3; tick.stroke()
+        text("PRESS", NSRect(x: 328, y: 112, width: 78, height: 14), size: 8, centered: true, ink: .white)
+        text(labels["dial_press"] ?? "—", NSRect(x: 325, y: 130, width: 83, height: 30), size: 10, bold: true, centered: true, ink: .white)
+        text("↶ " + (labels["dial_ccw"] ?? "Turn left"), NSRect(x: 313, y: 184, width: 106, height: 15), size: 9, centered: true)
+        text("↷ " + (labels["dial_cw"] ?? "Turn right"), NSRect(x: 313, y: 204, width: 106, height: 15), size: 9, centered: true)
+        text(profile == nil ? detail : "LIVE LAYOUT  ·  Press the dial to switch setups", NSRect(x: 20, y: 248, width: 400, height: 25), size: 10)
+        context.restoreGState()
+    }
+}
+
 // The host receives the session URL on stdin, never through the process arguments.
 final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     let url: URL
@@ -10,7 +86,10 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     var web: WKWebView!
     var status: NSStatusItem!
     var panel: NSPanel!
-    var panelText: NSTextField!
+    var panelPreview: KeypadPreview!
+    var menuPreview: KeypadPreview!
+    var currentProfile: [String: Any]?
+    var menuFingerprint = ""
     var hotKey: EventHotKeyRef?
     var handler: EventHandlerRef?
     var timer: Timer?
@@ -69,7 +148,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         window.center()
         web.load(URLRequest(url: url))
         showEditor()
-        (panel, panelText) = makePanel(width: 350, height: 315)
+        (panel, panelPreview) = makePanel(width: 440, height: 280)
         panel.isMovableByWindowBackground = true
         if UserDefaults.standard.bool(forKey: "floatingLayout") { panel.orderFrontRegardless() }
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -101,7 +180,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         timer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in self.poll() }
     }
 
-    func makePanel(width: CGFloat, height: CGFloat) -> (NSPanel, NSTextField) {
+    func makePanel(width: CGFloat, height: CGFloat) -> (NSPanel, KeypadPreview) {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.nonactivatingPanel, .titled, .closable], backing: .buffered, defer: false)
         panel.title = "Dialpad · live layout"
         panel.level = .floating
@@ -109,16 +188,13 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.backgroundColor = NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.93, alpha: 1)
-        let text = NSTextField(wrappingLabelWithString: summary)
-        text.frame = NSRect(x: 18, y: 12, width: width - 36, height: height - 24)
-        text.autoresizingMask = [.width, .height]
-        text.font = .systemFont(ofSize: 13)
-        text.textColor = NSColor(calibratedRed: 0.16, green: 0.24, blue: 0.18, alpha: 1)
-        panel.contentView?.addSubview(text)
+        let preview = KeypadPreview(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        preview.autoresizingMask = [.width, .height]
+        panel.contentView = preview
         if let screen = NSScreen.main?.visibleFrame {
             panel.setFrameTopLeftPoint(NSPoint(x: screen.maxX - width - 24, y: screen.maxY - 35))
         }
-        return (panel, text)
+        return (panel, preview)
     }
 
     func poll() {
@@ -131,7 +207,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
                 self.enabled = false
                 self.currentName = "Disconnected"
                 self.summary = "Dialpad is disconnected. Reopen the app to reconnect."
-                self.panelText.stringValue = self.summary
+                self.currentProfile = nil
                 self.refreshMenu()
             }
         }
@@ -150,6 +226,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     func update(_ state: [String: Any]) {
         enabled = state["enabled"] as? Bool ?? false
         if let profile = state["current"] as? [String: Any], enabled {
+            currentProfile = profile
             currentName = profile["name"] as? String ?? "Setup"
             let labels = profile["labels"] as? [String: String] ?? [:]
             let bindings = profile["bindings"] as? [String: [String: Any]] ?? [:]
@@ -159,25 +236,29 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
             summary = currentName + "\n\n" + rows.joined(separator: "\n\n") + "\n\n↶ \(describe(bindings["dial_ccw"] ?? [:]))   ↷ \(describe(bindings["dial_cw"] ?? [:]))\nPress dial → Next setup"
         } else {
+            currentProfile = nil
             currentName = "Cycling off"
             let error = state["error"] as? String ?? ""
             if !error.isEmpty { currentName = "Needs attention" }
             summary = error.isEmpty ? "Setup cycling is off.\n\nOpen the editor to save and enable setups.\n\nThe keypad keeps its last written bindings. Reapply a normal layout to restore the dial press." : error
         }
-        panelText.stringValue = summary
         refreshMenu()
     }
 
     func refreshMenu() {
         status.button?.title = " " + String(currentName.prefix(24))
-        status.button?.toolTip = summary
+        status.button?.toolTip = currentName + " · Click to view the keypad"
+        panelPreview.configure(profile: currentProfile, title: currentName, detail: summary)
+        menuPreview?.configure(profile: currentProfile, title: currentName, detail: summary)
+        let fingerprint = currentName + summary + String(enabled)
+        if fingerprint == menuFingerprint { return }
+        menuFingerprint = fingerprint
         let menu = NSMenu()
-        let heading = NSMenuItem(title: currentName, action: nil, keyEquivalent: "")
-        menu.addItem(heading)
-        let lines = summary.components(separatedBy: "\n").filter({ !$0.isEmpty })
-        for line in (lines.first == currentName ? Array(lines.dropFirst()) : lines) {
-            menu.addItem(NSMenuItem(title: line, action: nil, keyEquivalent: ""))
-        }
+        let diagram = NSMenuItem()
+        menuPreview = KeypadPreview(frame: NSRect(x: 0, y: 0, width: 440, height: 280))
+        menuPreview.configure(profile: currentProfile, title: currentName, detail: summary)
+        diagram.view = menuPreview
+        menu.addItem(diagram)
         menu.addItem(.separator())
         let next = menu.addItem(withTitle: "Next setup", action: #selector(nextSetup), keyEquivalent: "")
         next.target = self; next.isEnabled = enabled
@@ -198,7 +279,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             if let error = error {
                 self.currentName = "Switch failed"
                 self.summary = error
-                self.panelText.stringValue = error
+                self.currentProfile = nil
                 self.refreshMenu()
                 self.poll()
             }
@@ -244,6 +325,22 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
         }
     }
+}
+
+// Render a supplied fixture for visual review, without starting the server or hotkey.
+if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--render-layout" {
+    _ = NSApplication.shared
+    guard let line = readLine(), let data = line.data(using: .utf8),
+          let profile = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { exit(2) }
+    let view = KeypadPreview(frame: NSRect(x: 0, y: 0, width: 440, height: 280))
+    view.configure(profile: profile, title: profile["name"] as? String ?? "Preview", detail: "Visual fixture only")
+    let window = NSWindow(contentRect: view.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+    window.contentView = view
+    guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { exit(2) }
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    guard let png = bitmap.representation(using: .png, properties: [:]) else { exit(2) }
+    do { try png.write(to: URL(fileURLWithPath: CommandLine.arguments[2])) } catch { exit(2) }
+    exit(0)
 }
 
 guard let line = readLine(), let url = URL(string: line), url.host == "127.0.0.1" else { exit(1) }

@@ -4,7 +4,7 @@ A local six-key + dial configurator for AI coding. Built for the `1189:8890` CH5
 
 ## Run on this Mac
 
-Open `dist/Dialpad.app`. The editor opens in its own Mac window. Its menu-bar item shows the current cycling setup: hover for the bindings, click for the full list or **Show / hide floating layout**. Closing the editor keeps the companion running; **Quit Dialpad** stops both. No installation or Python setup is needed for the packaged app.
+Open `dist/Dialpad.app`. The editor opens in its own Mac window. Its menu-bar item shows the current cycling setup: click for a visual six-key-and-dial preview or **Show / hide floating layout**. Closing the editor keeps the companion running; **Quit Dialpad** stops both. No installation or Python setup is needed for the packaged app.
 
 The source version runs with Python 3.10+: `python3 app.py`. macOS source development additionally needs libusb; the packaged app includes it. Windows uses built-in HID APIs. Neither route executes the manufacturer's software.
 
@@ -26,7 +26,7 @@ Profiles are **not** read from the hardware. Applying replaces the selected cont
 1. **Media, Web browsing, Word and Apple Mail are already saved on first launch on Mac.** You do not need to create them. Upgrading adds them alongside existing setups, with room for eight total. Windows includes Media, Web browsing and Word; Apple Mail is Mac-only.
 2. Choose a saved setup and **Edit saved** to customize it, or add a coding layout with **Save current setup**. Their list order is the cycling order. Use the same hardware layer for every setup. Your edits and removals survive restarting; Starting layout retains the bundled originals if you want to restore one.
 3. Select the keypad and click **Review & enable dial cycling**. Review the entire cycle, then **Apply to keypad**. This immediately sends the first setup and replaces the dial press with **F18 → Next setup**.
-4. Press the dial to send the next setup. The Mac menu-bar label and editor header update quietly to show the last successfully transferred layout. Hover or click the menu-bar icon for its bindings; an optional floating panel is also available. Turn the dial to use that setup's scrolling actions. Physical results still need testing.
+4. Press the dial to send the next setup. The Mac menu-bar label and editor header update quietly to show the last successfully transferred layout. Click the menu-bar icon for a miniature keypad with labels and shortcuts placed on the keys. The optional floating panel and expanded editor header use the same physical arrangement. Turn the dial to use that setup's scrolling actions. Physical results still need testing.
 
 Cycling is handled by the running app, not an internal firmware layer-switch command. Each switch rewrites all nine bindings on the same layer. The protocol provides no read-back, persistence guarantee, or write-endurance specification; use it for occasional setup changes. Allow at least 1.2 seconds between presses; presses during a transfer are ignored. A failed transfer stops cycling and marks the device state unknown, with no retry or rollback.
 

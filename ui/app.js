@@ -113,8 +113,18 @@ function showRuntime(data){
  $('next-setup').disabled=!data.enabled||cyclePending;
  $('live-title').textContent=data.enabled?'◉ '+data.current.name:'◉ Setup cycling is off';
  $('live-keys').replaceChildren();
- if(data.current){controls.forEach(c=>{const row=document.createElement('div');row.textContent=(data.current.labels?.[c]||names[c])+' · '+describe(data.current.bindings[c]);$('live-keys').append(row);});}
- else $('live-keys').textContent=data.error||'Enable saved setups below to show the active layout. The editor may contain unapplied changes.';
+ const current=data.enabled?data.current:null;
+ const pad=document.createElement('div');pad.className='mini-keypad';pad.setAttribute('role','group');pad.setAttribute('aria-label','Live six-key keypad layout');
+ const keys=document.createElement('div');keys.className='mini-keys';
+ controls.slice(0,6).forEach((c,i)=>{const key=document.createElement('div');key.className='mini-key';const label=current?.labels?.[c]||names[c],binding=current?describe(current.bindings[c]):'—';key.title=label+' · '+binding;
+ for(const [cls,value] of [['mini-number','0'+(i+1)],['mini-label',label],['mini-shortcut',binding]]){const span=document.createElement('span');span.className=cls;span.textContent=value;key.append(span);}keys.append(key);});
+ const dial=document.createElement('div');dial.className='mini-dial-area';
+ const face=document.createElement('div');face.className='mini-dial';
+ const press=document.createElement('small');press.textContent='PRESS';face.append(press);
+ const label=document.createElement('span');label.textContent=current?.labels?.dial_press||'—';face.append(label);face.title=current?describe(current.bindings.dial_press):'No active layout';dial.append(face);
+ for(const [c,arrow] of [['dial_ccw','↶'],['dial_cw','↷']]){const turn=document.createElement('div');turn.className='mini-turn';turn.textContent=arrow+' '+(current?.labels?.[c]||(c==='dial_ccw'?'Turn left':'Turn right'));turn.title=current?describe(current.bindings[c]):'';dial.append(turn);}
+ pad.append(keys,dial);$('live-keys').append(pad);
+ if(!current){const note=document.createElement('p');note.className='note';note.textContent=data.error||'Cycling is off. Enable saved setups to see the active bindings.';$('live-keys').append(note);}
  $('cycle-note').textContent=data.error||(data.enabled?'Cycling is on: '+data.cycle_names.join(' → ')+'. The layout above shows the last successful transfer; test the physical keys.':data.ready?'Desktop dial shortcut ready. Save at least two setups, then review and enable.':'Open the packaged desktop app to enable the global dial shortcut.');
 }
 async function refreshRuntime(){

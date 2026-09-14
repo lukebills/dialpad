@@ -103,6 +103,17 @@ try:
         expect(page.locator('#profile-name')).to_have_value('Claude Code · Mac')
         page.locator('#remove-setup').click()
         expect(page.locator('#saved-setup option')).to_have_count(1)
+        # Render the live diagram using a mocked active state; no hardware Apply.
+        current = json.loads((ROOT / 'ui/starters.json').read_text())['mac']['media']
+        current['labels']['dial_press'] = 'Next setup'
+        current['bindings']['dial_press'] = {'type':'shortcut','key':'F18','modifiers':[]}
+        saved_state.update(enabled=True, current=current, cycle_names=[current['name']], active=0, generation=1)
+        expect(page.locator('#live-title')).to_contain_text('Media')
+        page.locator('#live-title').click()
+        expect(page.locator('.mini-key')).to_have_count(6)
+        expect(page.locator('.mini-dial')).to_contain_text('Next setup')
+        expect(page.locator('.mini-turn').first).to_contain_text('Volume down')
+        page.locator('#live-keys').screenshot(path=str(ROOT/'research'/'live-layout-preview.png'))
         page.locator('#test-input').fill('Test typing')
         page.locator('#test-input').press('Enter')
         assert 'Enter' in page.locator('#test-event').inner_text()

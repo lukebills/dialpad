@@ -38,3 +38,9 @@ Bundled Media, Web browsing, Word desktop and Apple Mail layouts now populate a 
 Added an original six-key-and-dial SVG, rendered PNG, multi-resolution Mac ICNS and Windows ICO. Mac packaging references Dialpad.icns; the native host loads the matching PNG for its Dock icon, and the editor uses the SVG. The menu bar has a matching monochrome keypad symbol. Removed automatic floating notification panels entirely; setup changes and error details remain in the menu bar, tooltip and editor. The optional user-opened layout panel remains available.
 
 All 34 unit tests, packaged browser smoke and native Mac smoke passed. Verified the bundle icon reference and native icon asset, and strict deep code-signature verification passed. No hardware writes were performed.
+
+## Visual live keypad previews
+
+Replaced the Mac menu's text-only binding list and floating window with a shared native vector keypad view: two rows of three keys, labelled dial press, and two rotation labels. The expanded editor header now mirrors that arrangement with responsive HTML/CSS. Labels, shortcuts and media/scroll dial actions come from the current enabled setup, not unapplied editor changes. Cycling-off and disconnected views clear active mappings and retain explanatory state. Accessibility text and full-detail tooltips accompany the native graphic.
+
+Packaged browser smoke passed with mocked active Media bindings: six visual keys, Next setup dial press, volume rotation labels, and no horizontal overflow at 390px. Native rendering was inspected using a Word fixture without registering a hotkey or writing to USB. The finished native packaged smoke and strict deep code-signature check passed. Screenshots: `native-layout-preview.png` and `live-layout-preview.png`. No hardware bindings were written during verification.
