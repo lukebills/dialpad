@@ -24,7 +24,9 @@ The paste chords above are suggested host conventions, not Claude commands. Veri
 
 ## Wispr Flow setup — selected by the user
 
-Use a tap-to-toggle hands-free mapping on Key 1. Press once to listen, then again to finish and paste. Escape cancels the recording without inserting its transcript. Keep Enter as its own key so the user can inspect dictated text before sending. Flow's documented defaults are Fn+Space on Mac and Ctrl+Win+Space on Windows; Macs without Fn have the Ctrl+Option+Space fallback. [Wispr hands-free](https://docs.wisprflow.ai/articles/6391241694-use-flow-hands-free)
+User correction: their existing Mac push-to-talk shortcuts are Fn or Control+Option; hands-free uses Fn+Space or double-tap Fn. The editor now offers Control+Option-only push-to-talk and a clearly labelled custom hands-free alternative. Hold/release remains unverified on this hardware.
+
+For the optional custom mapping, use a tap-to-toggle hands-free mapping on Key 1. Press once to listen, then again to finish and paste. Escape cancels the recording without inserting its transcript. Keep Enter as its own key so the user can inspect dictated text before sending. Flow's documented defaults are Fn+Space on Mac and Ctrl+Win+Space on Windows; Macs without Fn have the Ctrl+Option+Space fallback. [Wispr hands-free](https://docs.wisprflow.ai/articles/6391241694-use-flow-hands-free)
 
 On this Mac, add **Ctrl+Option+Space** in Flow → Settings → General → Shortcuts → Change → Hands-free mode. Retain the laptop Fn shortcut if wanted. On Windows, verify **Ctrl+Win+Space** in the same settings. These are ordinary modifier-plus-Space combinations for the keypad; Apple Fn is not an available action in our standard HID shortcut encoding. Use the left-hand modifiers consistently when recording and programming.
 

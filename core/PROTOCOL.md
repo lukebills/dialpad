@@ -48,3 +48,5 @@ is provided here.
 
 Consulted 14 September 2026. Protocol adaptation retains the upstream MIT
 notice in `THIRD_PARTY_LICENSE.txt`.
+
+Modifier-only shortcuts use `key: "NONE"` with a nonempty modifier list. Control+Option uses modifier mask 0x05 and keycode 0x00, as supported by the upstream optional-key encoding. This does not prove physical key-hold behavior or emulate Apple Fn.

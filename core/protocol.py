@@ -15,6 +15,7 @@ CONTROL_IDS = {**{f"key{i}": i for i in range(1, 7)},
 MODIFIERS = {"ctrl": 1, "shift": 2, "alt": 4, "cmd": 8, "win": 8,
              "rctrl": 16, "rshift": 32, "ralt": 64, "rcmd": 128, "rwin": 128}
 KEY_CODES = {chr(65+i): 4+i for i in range(26)}
+KEY_CODES['NONE'] = 0  # Modifier-only chord; not the Apple-specific Fn key.
 KEY_CODES.update({str((i+1) % 10): 30+i for i in range(10)})
 KEY_CODES.update(dict(zip([
     "ENTER", "ESCAPE", "BACKSPACE", "TAB", "SPACE", "MINUS", "EQUAL",
@@ -91,7 +92,10 @@ def encode_binding(control: str, action: dict, layer: int = 1) -> list[bytes]:
             key = step.get("key")
             if not isinstance(key, str) or key.upper() not in KEY_CODES:
                 raise ValueError(f"Unknown keyboard key: {key!r}")
-            chords.append((_modifiers(step.get("modifiers", [])), KEY_CODES[key.upper()]))
+            modifiers = _modifiers(step.get("modifiers", []))
+            if key.upper() == 'NONE' and not modifiers:
+                raise ValueError('A modifier-only shortcut needs at least one modifier')
+            chords.append((modifiers, KEY_CODES[key.upper()]))
         for index, (modifiers, code) in enumerate([(0, 0)] + chords):
             packets.append(_packet(3, key_id, layer << 4 | 1, len(chords), index, modifiers, code))
     elif kind == "media":

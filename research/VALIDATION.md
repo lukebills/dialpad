@@ -11,3 +11,7 @@
 Still unverified: physical programming outcome and persistent storage on this firmware; physical key ordering; dial direction under host scroll settings; actual Wispr insertion in the user's terminal; Windows packaging and HID behavior. A build workflow is supplied for Windows, but no Windows executable or Windows test result is claimed.
 
 Screenshot: `ui-preview.png`. Protocol and shortcut sources are recorded in the adjacent reports and `core/` notes.
+
+## Shortcut correction follow-up
+
+Added modifier-only Control+Option encoding and explicit push-to-talk/custom hands-free selection after the user's shortcut correction. 23 unit tests pass. Rebuilt Mac app passed the browser smoke test, including modifier-only editing and review text. No hardware writes. Physical hold/release remains unverified.

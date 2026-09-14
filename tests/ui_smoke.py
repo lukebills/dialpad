@@ -20,6 +20,15 @@ try:
         expect(page.locator('#connection')).not_to_have_text('Checking keypad…')
         assert page.locator('.key').count()==6
         assert page.locator('#connection').inner_text()=='Keypad connected'
+        page.locator('#flow-mode').select_option('ptt')
+        assert page.locator('#key').input_value()=='NONE'
+        assert page.locator('[data-control="key1"] .key-shortcut').inner_text()=='Ctrl + ⌥ / Alt'
+        page.locator('#preview').click()
+        page.locator('#review').wait_for(state='visible')
+        assert 'Key 1  →  Ctrl + ⌥ / Alt' in page.locator('#review-content').text_content()
+        assert 'NONE' not in page.locator('#review-content').text_content()
+        page.get_by_role('button',name='Cancel',exact=True).click()
+        page.locator('#flow-mode').select_option('handsfree')
         page.locator('[data-control="key2"]').click()
         assert page.locator('#key').input_value()=='ENTER'
         page.locator('#preview').click()

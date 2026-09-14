@@ -8,6 +8,12 @@ def fixture(hex_string):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_modifier_only_wispr_chord(self):
+        reports = encode_binding('key1', {'type': 'shortcut', 'key': 'NONE', 'modifiers': ['ctrl', 'alt']})
+        self.assertEqual(reports[2], fixture('03 01 11 01 01 05 00'))
+        with self.assertRaises(ValueError):
+            encode_binding('key1', {'type': 'shortcut', 'key': 'NONE', 'modifiers': []})
+
     def test_upstream_ctrl_a_fixture(self):
         self.assertEqual(encode_binding("key1", {"type": "shortcut", "key": "A", "modifiers": ["ctrl"]}), [
             fixture("03 fe 01 01 01"), fixture("03 01 11 01"),

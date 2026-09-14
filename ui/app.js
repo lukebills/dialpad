@@ -7,25 +7,32 @@ const controls = ['key1','key2','key3','key4','key5','key6','dial_ccw','dial_pre
 const shortcut = (key, modifiers=[]) => ({type:'shortcut',key,modifiers});
 const names = {key1:'Key 1',key2:'Key 2',key3:'Key 3',key4:'Key 4',key5:'Key 5',key6:'Key 6',dial_ccw:'Dial · turn left',dial_press:'Dial · press',dial_cw:'Dial · turn right'};
 let selected='key1', profile, devices=[], preview=null, recording=false, busy=false, revision=0;
-const keyNames = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ',...'1234567890', 'ENTER','ESCAPE','TAB','SPACE','BACKSPACE','DELETE','UP','DOWN','LEFT','RIGHT','HOME','END','PAGEUP','PAGEDOWN','MINUS','EQUAL','LEFTBRACKET','RIGHTBRACKET','BACKSLASH','SEMICOLON','QUOTE','GRAVE','COMMA','DOT','SLASH',...Array.from({length:24},(_,i)=>`F${i+1}`)];
+const keyNames = ['NONE',...'ABCDEFGHIJKLMNOPQRSTUVWXYZ',...'1234567890', 'ENTER','ESCAPE','TAB','SPACE','BACKSPACE','DELETE','UP','DOWN','LEFT','RIGHT','HOME','END','PAGEUP','PAGEDOWN','MINUS','EQUAL','LEFTBRACKET','RIGHTBRACKET','BACKSLASH','SEMICOLON','QUOTE','GRAVE','COMMA','DOT','SLASH',...Array.from({length:24},(_,i)=>`F${i+1}`)];
 const actions = {mouse:['wheel_up','wheel_down','middle_click','left_click','right_click'],media:['volume_up','volume_down','mute','play_pause','next','previous','stop','brightness_up','brightness_down']};
 function option(value, text=value){return new Option(text,value);}
-keyNames.forEach(k=>$('key').add(option(k)));
+keyNames.forEach(k=>$('key').add(option(k,k==='NONE'?'No key · modifiers only':k)));
 function message(text,error=false){$('message').textContent=text;$('message').className=error?'error':'';}
 async function api(path,body){
  const response=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const result=await response.json();if(!response.ok)throw new Error(result.error||'Request failed.');return result;
 }
-function describe(action){if(action.type==='shortcut')return [...action.modifiers.map(m=>({cmd:'⌘ / Win',alt:'⌥ / Alt',ctrl:'Ctrl',shift:'Shift'}[m]||m)),action.key].join(' + ');return (action.action||action.type).replaceAll('_',' ');}
+function describe(action){if(action.type==='shortcut')return [...action.modifiers.map(m=>({cmd:'⌘ / Win',alt:'⌥ / Alt',ctrl:'Ctrl',shift:'Shift'}[m]||m)),...(action.key==='NONE'?[]:[action.key])].join(' + ');return (action.action||action.type).replaceAll('_',' ');}
 function preset(){
  const mac=$('platform').value==='mac',kind=$('preset').value;
  const labels={key1:'Wispr Flow',key2:'Enter',key3:'Escape',key4:'New line',key5:'Paste',key6:kind==='claude'?'Transcript':kind==='desktop'?'Review':'Tab',dial_ccw:'Scroll up',dial_press:'Tab',dial_cw:'Scroll down'};
  const bindings={key1:shortcut('SPACE',mac?['ctrl','alt']:['ctrl','cmd']),key2:shortcut('ENTER'),key3:shortcut('ESCAPE'),key4:shortcut('J',['ctrl']),key5:shortcut('V',mac?['cmd']:['ctrl','shift']),key6:kind==='claude'?shortcut('O',['ctrl']):shortcut('TAB'),dial_ccw:{type:'mouse',action:'wheel_up'},dial_press:shortcut('TAB'),dial_cw:{type:'mouse',action:'wheel_down'}};
  if(kind==='desktop'){bindings.key4=shortcut('ENTER',['shift']);bindings.key5=shortcut('V',mac?['cmd']:['ctrl']);bindings.key6=shortcut('G',['ctrl','shift']);}
  profile={version:1,name:(kind==='claude'?'Claude Code':kind==='codex'?'Codex terminal':'Codex desktop')+' · '+(mac?'Mac':'Windows'),layer:1,labels,bindings};
- $('preset-note').textContent=mac?'Wispr Flow: set Hands-free mode to Control + Option + Space in Flow Settings → General → Shortcuts. Tap once to dictate; tap again to stop and paste. Escape cancels dictation.':'Wispr Flow: Control + Windows + Space toggles Hands-free mode. Check this shortcut in Flow settings. Tap again to stop and paste; Escape cancels.';
+ configureFlow();
  render();message('Starting layout loaded. Nothing has been written to your keypad.');
 }
+function configureFlow(){
+ const mac=$('platform').value==='mac',ptt=$('flow-mode').value==='ptt';
+ profile.bindings.key1=shortcut(ptt?'NONE':'SPACE',mac?['ctrl','alt']:['ctrl','cmd']);
+ profile.labels.key1=ptt?'Flow · hold to talk':'Wispr Flow';
+ $('preset-note').textContent=mac?(ptt?'Your Flow push-to-talk shortcut is Control + Option (or Apple Fn). This key sends Control + Option only. Holding and releasing must be tested on this keypad before relying on push to talk.':'Your current Flow hands-free shortcuts are Fn + Space or double-tap Fn. This keypad cannot send Apple Fn. To use this layout, add Control + Option + Space to Hands-free mode in Flow settings. Tap to start; tap again to stop and paste.'):(ptt?'Verify Control + Windows is assigned to push to talk in Flow. Holding and releasing must be tested on this keypad.':'Verify Control + Windows + Space is assigned to Hands-free mode in Flow. Tap to start; tap again to stop and paste.');
+}
+$('flow-mode').onchange=()=>{configureFlow();render();message('Flow binding updated in the editor only.');};
 function invalidate(){preview=null;revision++;}
 function render(){
  $('profile-name').value=profile.name;$('profile-title').textContent=profile.name;$('layer').value=profile.layer;
