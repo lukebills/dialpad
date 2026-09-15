@@ -8,7 +8,7 @@ const shortcut = (key, modifiers=[]) => ({type:'shortcut',key,modifiers});
 const names = {key1:'Key 1',key2:'Key 2',key3:'Key 3',key4:'Key 4',key5:'Key 5',key6:'Key 6',dial_ccw:'Dial · turn left',dial_press:'Dial · press',dial_cw:'Dial · turn right'};
 let selected='key1', profile, devices=[], preview=null, recording=false, busy=false, revision=0;
 let runtime=null, runtimePolling=false, cyclePending=false, savedFingerprint='';
-let starterLayouts={};
+let starterLayouts={}, cycleOrder=[], libraryFingerprint='', devicePolling=false, deviceFingerprint='';
 const keyNames = ['NONE',...'ABCDEFGHIJKLMNOPQRSTUVWXYZ',...'1234567890', 'ENTER','ESCAPE','TAB','SPACE','BACKSPACE','DELETE','UP','DOWN','LEFT','RIGHT','HOME','END','PAGEUP','PAGEDOWN','MINUS','EQUAL','LEFTBRACKET','RIGHTBRACKET','BACKSLASH','SEMICOLON','QUOTE','GRAVE','COMMA','DOT','SLASH',...Array.from({length:24},(_,i)=>`F${i+1}`)];
 const actions = {mouse:['wheel_up','wheel_down','middle_click','left_click','right_click'],media:['volume_up','volume_down','mute','play_pause','next','previous','stop','brightness_up','brightness_down']};
 function option(value, text=value){return new Option(text,value);}
@@ -18,7 +18,7 @@ async function api(path,body){
  const response=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const result=await response.json();if(!response.ok)throw new Error(result.error||'Request failed.');return result;
 }
-function describe(action){if(action.type==='shortcut')return [...action.modifiers.map(m=>({cmd:'⌘ / Win',alt:'⌥ / Alt',ctrl:'Ctrl',shift:'Shift'}[m]||m)),...(action.key==='NONE'?[]:[action.key])].join(' + ');return (action.action||action.type).replaceAll('_',' ');}
+function describe(action){if(action.type==='copy_paste')return 'Copy ⇄ Paste';if(action.type==='shortcut')return [...action.modifiers.map(m=>({cmd:'⌘ / Win',alt:'⌥ / Alt',ctrl:'Ctrl',shift:'Shift'}[m]||m)),...(action.key==='NONE'?[]:[action.key])].join(' + ');return (action.action||action.type).replaceAll('_',' ');}
 function preset(){
  const mac=$('platform').value==='mac',kind=$('preset').value;
  if(['media','web','word','mail'].includes(kind)){
@@ -56,7 +56,7 @@ function render(){
 function select(c){selected=c;recording=false;render();}
 function editor(){
  const a=profile.bindings[selected];$('control-title').textContent=names[selected];$('label').value=profile.labels[selected]||'';$('type').value=a.type;
- $('shortcut-fields').hidden=a.type!=='shortcut';$('action-field').hidden=a.type==='shortcut';
+ $('shortcut-fields').hidden=a.type!=='shortcut';$('action-field').hidden=['shortcut','copy_paste'].includes(a.type);$('toggle-note').hidden=a.type!=='copy_paste';
  if(a.type==='shortcut'){$('key').value=a.key.toUpperCase();document.querySelectorAll('.modifiers input').forEach(i=>i.checked=a.modifiers.includes(i.value));}
  else{$('action').replaceChildren();(actions[a.type]||[]).forEach(v=>$('action').add(option(v,v.replaceAll('_',' '))));$('action').value=a.action;}
  $('record').textContent=recording?'Press your shortcut…':'Record shortcut';
@@ -65,7 +65,7 @@ function updateAction(){
  const type=$('type').value;
  profile.bindings[selected]=type==='shortcut'?shortcut($('key').value,[...document.querySelectorAll('.modifiers input:checked')].map(i=>i.value)):{type,action:$('action').value};render();
 }
-$('type').onchange=()=>{const type=$('type').value;profile.bindings[selected]=type==='shortcut'?shortcut('ENTER'):{type,action:actions[type][0]};render();};
+$('type').onchange=()=>{const type=$('type').value;if(type==='copy_paste'&&!selected.startsWith('key')){message('Choose one of the six keys for Copy / Paste.',true);editor();return;}profile.bindings[selected]=type==='copy_paste'?{type,modifiers:profile.bindings[selected].type==='shortcut'&&profile.bindings[selected].key==='V'&&profile.bindings[selected].modifiers.length?[...profile.bindings[selected].modifiers]:$('platform').value==='mac'?['cmd']:['ctrl']}:type==='shortcut'?shortcut('ENTER'):{type,action:actions[type][0]};if(type==='copy_paste')profile.labels[selected]='Copy / Paste';render();};
 $('key').onchange=updateAction;$('action').onchange=updateAction;document.querySelectorAll('.modifiers input').forEach(i=>i.onchange=updateAction);
 $('label').oninput=()=>{profile.labels[selected]=$('label').value;const label=$('keys').querySelector(`[data-control="${selected}"] .key-label`);if(label)label.textContent=$('label').value;invalidate();};
 $('profile-name').oninput=()=>{profile.name=$('profile-name').value;$('profile-title').textContent=profile.name;invalidate();};$('layer').onchange=()=>{profile.layer=Number($('layer').value);invalidate();};
@@ -80,16 +80,20 @@ document.addEventListener('keydown',event=>{
  profile.bindings[selected]=shortcut(key,[...(event.ctrlKey?['ctrl']:[]),...(event.shiftKey?['shift']:[]),...(event.altKey?['alt']:[]),...(event.metaKey?['cmd']:[])]);recording=false;render();
 },true);
 async function refresh(){
- try{const data=await api('devices');devices=data.devices;$('device').replaceChildren();
+ if(devicePolling||busy)return;devicePolling=true;
+ try{const data=await api('devices');devices=data.devices;
+ const fingerprint=JSON.stringify(devices);if(fingerprint===deviceFingerprint)return;deviceFingerprint=fingerprint;
+ const previous=$('device').value;$('device').replaceChildren();
  if(!devices.length){$('device').add(option('','No keypad found'));$('connection').textContent='Keypad not found';$('connection').className='status';}
  else{const candidates=devices.filter(d=>d.programmable);const shown=candidates.length?candidates:devices;shown.forEach((d,i)=>$('device').add(option(d.device_id||d.id,(d.programmable?'Mini keypad':'Input interface')+(shown.length>1?' '+(i+1):'')+' · 1189:8890')));$('connection').textContent=candidates.length?'Keypad connected':'Keypad found · access limited';$('connection').className='status connected';if(!candidates.length)message(shown[0].limitation,true);}
- $('preview').disabled=!devices.some(d=>d.programmable);invalidate();
- }catch(e){$('connection').textContent='Connection unavailable';$('preview').disabled=true;message(e.message,true);}
+ if([...$('device').options].some(o=>o.value===previous))$('device').value=previous;
+ $('preview').disabled=!devices.some(d=>d.programmable);if($('device').value!==previous)invalidate();
+ }catch(e){$('connection').textContent='Connection unavailable';$('connection').className='status';$('preview').disabled=true;message(e.message,true);deviceFingerprint='';}finally{devicePolling=false;}
 }
 $('refresh').onclick=refresh;$('device').onchange=invalidate;$('scope').onchange=invalidate;
 $('export').onclick=async()=>{try{await api('validate',{profile});const url=URL.createObjectURL(new Blob([JSON.stringify(profile,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download=profile.name.replace(/[^\w -]/g,'').trim()+'.dialpad.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('Profile exported. Keep it to restore these app settings later.');}catch(e){message(e.message,true);}};
-$('import').onclick=()=>$('file').click();$('file').onchange=async()=>{try{const file=$('file').files[0];if(!file)return;if(file.size>65536)throw new Error('Profile is too large.');const imported=JSON.parse(await file.text());await api('validate',{profile:imported});if(Object.values(imported.bindings).some(a=>!['shortcut','mouse','media'].includes(a.type)))throw new Error('This editor supports single shortcuts, mouse and media actions only.');imported.labels=Object.fromEntries(controls.map(c=>[c,typeof imported.labels?.[c]==='string'?imported.labels[c].slice(0,32):names[c]]));for(const a of Object.values(imported.bindings)){if(a.type==='shortcut'){a.key=a.key.toUpperCase();a.modifiers=(a.modifiers||[]).map(m=>m.toLowerCase());if(a.modifiers.some(m=>!['ctrl','shift','alt','cmd'].includes(m))||!keyNames.includes(a.key))throw new Error('Profile uses a key or modifier this editor cannot display.');}else if(a.type==='mouse' && a.modifiers?.length)throw new Error('Mouse modifiers are not supported by this editor. Remove them before importing.');else if(!actions[a.type].includes(a.action))throw new Error('Profile uses an action this editor cannot display.');}profile=imported;render();$('preset-note').textContent='Imported profile. Check that its dictation and terminal shortcuts match this computer.';message('Profile imported. Nothing has been written to the keypad.');}catch(e){message(e.message,true);}finally{$('file').value='';}};
-$('preview').onclick=async()=>{try{const selectedControls=$('scope').value==='all'?[...controls]:[selected];const snapshot=structuredClone(profile), currentRevision=revision;const result=await api('preview',{profile:snapshot,controls:selectedControls,device_id:$('device').value});if(revision!==currentRevision){message('Settings changed while preparing the preview. Review them again.');return;}preview=result;$('review-content').textContent='Layer '+snapshot.layer+'\n\n'+selectedControls.map(c=>`${names[c]}  →  ${describe(snapshot.bindings[c])}`).join('\n');$('review').showModal();}catch(e){message(e.message,true);}};
+$('import').onclick=()=>$('file').click();$('file').onchange=async()=>{try{const file=$('file').files[0];if(!file)return;if(file.size>65536)throw new Error('Profile is too large.');const imported=JSON.parse(await file.text());await api('validate',{profile:imported});if(Object.values(imported.bindings).some(a=>!['shortcut','mouse','media','copy_paste'].includes(a.type)))throw new Error('This editor supports single shortcuts, mouse and media actions only.');imported.labels=Object.fromEntries(controls.map(c=>[c,typeof imported.labels?.[c]==='string'?imported.labels[c].slice(0,32):names[c]]));for(const a of Object.values(imported.bindings)){if(a.type==='shortcut'){a.key=a.key.toUpperCase();a.modifiers=(a.modifiers||[]).map(m=>m.toLowerCase());if(a.modifiers.some(m=>!['ctrl','shift','alt','cmd'].includes(m))||!keyNames.includes(a.key))throw new Error('Profile uses a key or modifier this editor cannot display.');}else if(a.type==='mouse' && a.modifiers?.length)throw new Error('Mouse modifiers are not supported by this editor. Remove them before importing.');else if(a.type!=='copy_paste'&&!actions[a.type].includes(a.action))throw new Error('Profile uses an action this editor cannot display.');}profile=imported;openEditor();render();$('preset-note').textContent='Imported profile. Check that its dictation and terminal shortcuts match this computer.';message('Profile imported. Nothing has been written to the keypad.');}catch(e){message(e.message,true);}finally{$('file').value='';}};
+$('preview').onclick=async()=>{try{const selectedControls=$('scope').value==='all'?[...controls]:[selected];const snapshot=structuredClone(profile), currentRevision=revision;const result=await api('preview',{profile:snapshot,controls:selectedControls,device_id:$('device').value});if(revision!==currentRevision){message('Settings changed while preparing the preview. Review them again.');return;}preview=result;$('review-content').textContent=(runtime?.enabled?'This will stop dial cycling. Save the template and enable the cycle to keep switching.\n\n':'')+'Layer '+snapshot.layer+'\n\n'+selectedControls.map(c=>`${names[c]}  →  ${describe(snapshot.bindings[c])}`).join('\n');$('review').showModal();}catch(e){message(e.message,true);}};
 $('apply').onclick=async()=>{if(!preview||busy)return;busy=true;$('apply').disabled=true;$('apply').textContent='Applying…';try{const result=await api('apply',{nonce:preview.nonce});message(result.result.message||'Transfer completed. Test your physical controls below.');}catch(e){message('Apply failed: '+e.message,true);}finally{busy=false;preview=null;$('apply').disabled=false;$('apply').textContent='Apply to keypad';$('review').close();refreshRuntime();}};
 $('review').addEventListener('cancel',e=>{if(busy)e.preventDefault();});
 $('test-input').onkeydown=e=>{$('test-event').textContent='Received: '+[...(e.ctrlKey?['Ctrl']:[]),...(e.altKey?['Alt']:[]),...(e.metaKey?['Command / Windows']:[]),...(e.shiftKey?['Shift']:[]),e.key].join(' + ');};
@@ -108,7 +112,8 @@ function showRuntime(data){
  else if([...$('saved-setup').options].some(o=>o.value===previous))$('saved-setup').value=previous;
  }
  $('edit-setup').disabled=$('remove-setup').disabled=!data.profiles.length;
- $('enable-cycle').disabled=!data.ready||data.profiles.length<2;
+ renderLibrary(data);
+ $('enable-cycle').disabled=!data.ready||!cycleOrder.length;
  $('disable-cycle').disabled=!data.enabled;
  $('next-setup').disabled=!data.enabled||cyclePending;
  $('live-title').textContent=data.enabled?'◉ '+data.current.name:'◉ Setup cycling is off';
@@ -125,18 +130,55 @@ function showRuntime(data){
  for(const [c,arrow] of [['dial_ccw','↶'],['dial_cw','↷']]){const turn=document.createElement('div');turn.className='mini-turn';turn.textContent=arrow+' '+(current?.labels?.[c]||(c==='dial_ccw'?'Turn left':'Turn right'));turn.title=current?describe(current.bindings[c]):'';dial.append(turn);}
  pad.append(keys,dial);$('live-keys').append(pad);
  if(!current){const note=document.createElement('p');note.className='note';note.textContent=data.error||'Cycling is off. Enable saved setups to see the active bindings.';$('live-keys').append(note);}
- $('cycle-note').textContent=data.error||(data.enabled?'Cycling is on: '+data.cycle_names.join(' → ')+'. The layout above shows the last successful transfer; test the physical keys.':data.ready?'Desktop dial shortcut ready. Save at least two setups, then review and enable.':'Open the packaged desktop app to enable the global dial shortcut.');
+ $('cycle-note').textContent=data.error||(data.enabled?'Cycling is on: '+data.cycle_names.join(' → ')+'. Template and order changes take effect after Review & enable. The live layout shows the last successful transfer.':data.ready?'Choose your cycling templates, then review and enable. The cycle will resume when you reopen Dialpad.':'Open the packaged desktop app to enable the global dial shortcut.');
 }
 async function refreshRuntime(){
  if(runtimePolling)return;runtimePolling=true;
  try{showRuntime(await api('setups'));}catch(e){$('cycle-note').textContent=e.message;$('live-title').textContent='◉ App disconnected';$('next-setup').disabled=true;$('enable-cycle').disabled=true;$('save-setup').disabled=true;}finally{runtimePolling=false;}
 }
-$('save-setup').onclick=async()=>{if(!runtime)return;try{const snapshot=structuredClone(profile);await api('validate',{profile:snapshot});const profiles=structuredClone(runtime.profiles);const index=profiles.findIndex(p=>p.name===snapshot.name);if(index<0)profiles.push(snapshot);else profiles[index]=snapshot;showRuntime(await api('setups/save',{profiles}));message('Setup saved on this computer. '+(runtime.enabled?'Review and enable again to use these edits in the cycle.':'Save another layout to build your cycle.'));}catch(e){message(e.message,true);}};
-$('edit-setup').onclick=()=>{const saved=runtime?.profiles[Number($('saved-setup').value)];if(saved){profile=structuredClone(saved);profile.labels=profile.labels||{};render();message('Saved setup loaded into the editor. Save current setup after editing.');}};
+$('save-setup').onclick=async()=>{if(!runtime)return;try{const snapshot=structuredClone(profile);await api('validate',{profile:snapshot});const profiles=structuredClone(runtime.profiles);const index=profiles.findIndex(p=>p.name===snapshot.name);if(index<0)profiles.push(snapshot);else profiles[index]=snapshot;showRuntime(await api('setups/save',{profiles}));$('setup-editor').open=false;message('Template saved. Add it to Dial cycling, then review and enable to use your changes.');}catch(e){message(e.message,true);}};
+$('edit-setup').onclick=()=>{const saved=runtime?.profiles[Number($('saved-setup').value)];if(saved){profile=structuredClone(saved);profile.labels=profile.labels||{};openEditor();render();message('Saved setup loaded into the editor. Save current setup after editing.');}};
 $('remove-setup').onclick=async()=>{try{const profiles=structuredClone(runtime.profiles);profiles.splice(Number($('saved-setup').value),1);showRuntime(await api('setups/save',{profiles}));message('Saved setup removed. An enabled cycle keeps its reviewed layouts until stopped or enabled again.');}catch(e){message(e.message,true);}};
-$('enable-cycle').onclick=async()=>{try{const result=await api('setups/preview',{device_id:$('device').value});preview=result;$('review-content').textContent='Enable this cycle on hardware layer '+result.layer+'?\n\n'+result.profiles.map((p,i)=>`${i+1}. ${p.name}\n`+controls.map(c=>`${names[c]} → ${describe(p.bindings[c])}`).join('\n')).join('\n\n')+'\n\nApply sends the first setup now. Each dial press (F18) sends the next setup, replacing all nine bindings. The app must stay running. F18 on any keyboard also triggers this cycle. Firmware persistence and write endurance are unknown; this is intended for occasional setup changes.';$('review').showModal();}catch(e){message(e.message,true);}};
+$('enable-cycle').onclick=async()=>{try{const result=await api('setups/preview',{device_id:$('device').value,names:cycleOrder});preview=result;$('review-content').textContent='Enable this cycle on hardware layer '+result.layer+'?\n\n'+result.profiles.map((p,i)=>`${i+1}. ${p.name}\n`+controls.map(c=>`${names[c]} → ${describe(p.bindings[c])}`).join('\n')).join('\n\n')+'\n\nApply sends the first setup now. Each dial press (F18) sends the next setup, replacing all nine bindings. Closing the window keeps the app running. The enabled cycle resumes on relaunch. Copy / Paste uses F19 and needs Mac Accessibility access. F18 on any keyboard also triggers this cycle. Firmware persistence and write endurance are unknown; this is intended for occasional setup changes.';$('review').showModal();}catch(e){message(e.message,true);}};
 $('disable-cycle').onclick=async()=>{try{showRuntime(await api('setups/disable',{}));message('Cycling stopped. The keypad keeps its last bindings. Apply a normal layout to restore the dial press.');}catch(e){message(e.message,true);}};
 $('next-setup').onclick=async()=>{if(cyclePending)return;cyclePending=true;$('next-setup').disabled=true;try{showRuntime(await api('setups/cycle',{}));}catch(e){message(e.message,true);}finally{cyclePending=false;refreshRuntime();}};
+
+function openEditor(){ $('setup-editor').open=true;$('setup-editor').scrollIntoView({behavior:'smooth',block:'start'}); }
+$('done-editing').onclick=()=>{$('setup-editor').open=false;window.scrollTo({top:0,behavior:'smooth'});};
+$('background').onclick=()=>{if(window.webkit?.messageHandlers?.desktop)window.webkit.messageHandlers.desktop.postMessage('hide');else message('You can close this browser tab. Keep the Dialpad companion running.');};
+$('create-setup').onclick=()=>{
+ profile={version:1,name:'New setup',layer:runtime?.profiles[0]?.layer||1,labels:{...names},bindings:Object.fromEntries(controls.map(c=>[c,shortcut(c==='dial_ccw'?'UP':c==='dial_cw'?'DOWN':'ENTER')]))};
+ let number=2;while(runtime?.profiles.some(p=>p.name===profile.name))profile.name='New setup '+number++;
+ selected='key1';render();openEditor();$('profile-name').focus();$('profile-name').select();
+};
+function smallButton(label,action){const b=document.createElement('button');b.textContent=label;b.onclick=action;return b;}
+async function updateOrder(names){try{showRuntime(await api('setups/order',{names}));}catch(e){message(e.message,true);}}
+function renderLibrary(data){
+ const fingerprint=JSON.stringify([data.profiles,data.order]);if(fingerprint===libraryFingerprint)return;libraryFingerprint=fingerprint;
+ cycleOrder=(data.order??data.profiles.map(p=>p.name)).filter(n=>data.profiles.some(p=>p.name===n));
+ $('template-list').replaceChildren();$('cycle-list').replaceChildren();
+ data.profiles.forEach((p,i)=>{
+  const card=document.createElement('article');card.className='template-card';card.draggable=true;
+  card.ondragstart=e=>{e.dataTransfer.setData('text/plain',p.name);e.dataTransfer.effectAllowed='copyMove';};
+  const title=document.createElement('h3');title.textContent=p.name;card.append(title);
+  const summary=document.createElement('p');summary.className='note';summary.textContent=controls.slice(0,6).map(c=>p.labels?.[c]||describe(p.bindings[c])).join(' · ');card.append(summary);
+  const buttons=document.createElement('div');buttons.className='saved-tools';
+  const add=smallButton(cycleOrder.includes(p.name)?'In cycle':'Add to cycle',()=>updateOrder([...cycleOrder,p.name]));add.disabled=cycleOrder.includes(p.name);
+  buttons.append(add,smallButton('Edit',()=>{$('saved-setup').value=String(i);$('edit-setup').click();}),smallButton('Delete',()=>{if(confirm('Delete template “'+p.name+'”?')){$('saved-setup').value=String(i);$('remove-setup').click();}}));card.append(buttons);$('template-list').append(card);
+ });
+ cycleOrder.forEach((name,i)=>{
+  const row=document.createElement('div');row.className='cycle-row';row.draggable=true;row.ondragstart=e=>e.dataTransfer.setData('text/plain',name);
+  row.ondragover=e=>e.preventDefault();row.ondrop=e=>{e.preventDefault();e.stopPropagation();const n=e.dataTransfer.getData('text/plain');if(!data.profiles.some(p=>p.name===n))return;const order=cycleOrder.filter(x=>x!==n);order.splice(i,0,n);updateOrder(order);};
+  const title=document.createElement('span');title.textContent=(i+1)+'. '+name;row.append(title);
+  const move=delta=>{const order=[...cycleOrder];[order[i],order[i+delta]]=[order[i+delta],order[i]];updateOrder(order);};
+  const up=smallButton('↑',()=>move(-1));up.disabled=i===0;up.setAttribute('aria-label','Move '+name+' up');
+  const down=smallButton('↓',()=>move(1));down.disabled=i===cycleOrder.length-1;down.setAttribute('aria-label','Move '+name+' down');
+  const remove=smallButton('×',()=>updateOrder(cycleOrder.filter(n=>n!==name)));remove.setAttribute('aria-label','Remove '+name+' from cycle');row.append(up,down,remove);$('cycle-list').append(row);
+ });
+ if(!cycleOrder.length){const note=document.createElement('p');note.className='note';note.textContent='Drop templates here to build your cycle.';$('cycle-list').append(note);}
+}
+$('cycle-list').ondragover=e=>e.preventDefault();
+$('cycle-list').ondrop=e=>{e.preventDefault();const name=e.dataTransfer.getData('text/plain');if(runtime?.profiles.some(p=>p.name===name))updateOrder([...cycleOrder.filter(n=>n!==name),name]);};
 $('platform').value=/Mac/.test(navigator.platform)?'mac':'windows';
-async function start(){try{const response=await fetch('/starters.json');if(!response.ok)throw new Error('Could not load bundled layouts.');starterLayouts=await response.json();preset();refresh();refreshRuntime();setInterval(refreshRuntime,1000);}catch(e){message(e.message,true);}}
+async function start(){try{const response=await fetch('/starters.json');if(!response.ok)throw new Error('Could not load bundled layouts.');starterLayouts=await response.json();preset();refresh();refreshRuntime();setInterval(refreshRuntime,1000);setInterval(refresh,4000);}catch(e){message(e.message,true);}}
 start();

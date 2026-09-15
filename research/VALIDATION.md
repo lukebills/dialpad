@@ -48,3 +48,13 @@ Packaged browser smoke passed with mocked active Media bindings: six visual keys
 ## Coding dial arrow keys
 
 Changed all Claude/Codex starters to emit keyboard Up on counterclockwise rotation and Down on clockwise rotation. Updated the user's existing saved Claude Code and Codex terminal profiles, retaining their other bindings; saved a local pre-change settings backup. Everyday layouts retain their existing rotation actions. Packaged UI smoke verified the arrow editor values and passed its existing checks with hardware Apply blocked. Strict deep bundle signature verification passed. Hardware activation still requires Review & enable.
+
+## Dashboard and resumable companion — 2026-09-15
+
+Replaced the everyday editor-first screen with live keypad, independent template library, and drag/reorder cycling list. Detailed editing is collapsed by default, with Create new setup and template Edit entry points. Connection discovery refreshes every four seconds and keeps an unchanged review valid. Direct programming reviews explain that they stop cycling.
+
+A successfully enabled cycle now persists its reviewed snapshot and active index. Relaunch restores that state only after native hotkey registration; restoring makes no USB writes. Stop and programming failures clear the resume marker. The marker is also removed before a switch, so an interrupted transfer cannot restore a possibly partial layout. Mac launches reuse the existing companion, and Run in background hides the editor while retaining the menu bar. Windows close minimizes the companion; Windows remains untested.
+
+Added optional Alternate Copy / Paste on one key per profile. It encodes F19 and is available through an enabled cycle, including a single-template cycle. The native companion sends Copy first, then Paste, resetting on setup changes or relaunch. Mac requests Accessibility permission on first use; no clipboard contents are read. Existing Paste bindings are preserved. Physical shortcut delivery, Accessibility approval and Windows behavior still need user testing.
+
+Validation: 39 unit tests passed; packaged Playwright smoke passed including template drag/drop, reorder buttons, optional Copy/Paste selection, auto-refresh preserving preview, review/cancel, and responsive layout. Native packaged smoke passed with F18/F19 registered, background-button hiding and editor reopening verified, and read-only keypad discovery. Strict deep bundle signature verification passed. Launching the actual app twice reused the existing companion and requested its window reopen. No hardware writes or synthetic Copy/Paste events were performed during verification. Actual app reopened with cycling awaiting review; saved user templates were preserved.

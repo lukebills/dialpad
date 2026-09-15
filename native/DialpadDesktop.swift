@@ -1,6 +1,7 @@
 import Cocoa
 import WebKit
 import Carbon
+import ApplicationServices
 
 // One scalable diagram is shared by the menu-bar preview and floating window.
 final class KeypadPreview: NSView {
@@ -38,6 +39,7 @@ final class KeypadPreview: NSView {
     func action(_ control: String) -> String {
         let bindings = profile?["bindings"] as? [String: [String: Any]] ?? [:]
         let binding = bindings[control] ?? [:]
+        if binding["type"] as? String == "copy_paste" { return "Copy ⇄ Paste" }
         if binding["type"] as? String == "shortcut" {
             let symbols = ["ctrl":"⌃", "alt":"⌥", "cmd":"⌘", "shift":"⇧"]
             let modifiers = (binding["modifiers"] as? [String] ?? []).map { symbols[$0] ?? $0 }.joined()
@@ -79,7 +81,7 @@ final class KeypadPreview: NSView {
 }
 
 // The host receives the session URL on stdin, never through the process arguments.
-final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     let url: URL
     let token: String
     var window: NSWindow!
@@ -90,6 +92,12 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     var menuPreview: KeypadPreview!
     var currentProfile: [String: Any]?
     var menuFingerprint = ""
+    var copyHotKey: EventHotKeyRef?
+    var copyNext = true
+    var heldHotKeys = Set<UInt32>()
+    var lastProfileName = ""
+    var hotKeyReady = false
+    var showRequest = 0
     var hotKey: EventHotKeyRef?
     var handler: EventHandlerRef?
     var timer: Timer?
@@ -137,7 +145,9 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         }
         let edit = NSMenuItem(); edit.submenu = editMenu; menu.addItem(edit)
         NSApp.mainMenu = menu
-        web = WKWebView(frame: .zero)
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(self, name: "desktop")
+        web = WKWebView(frame: .zero, configuration: configuration)
         web.navigationDelegate = self
         web.uiDelegate = self
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1160, height: 830), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -165,16 +175,28 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         status.button?.imagePosition = .imageLeading
         refreshMenu()
 
-        var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        var events = [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)), EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))]
         let pointer = Unmanaged.passUnretained(self).toOpaque()
-        let installed = InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
+        let installed = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
             guard let context = context else { return OSStatus(eventNotHandledErr) }
             let host = Unmanaged<Desktop>.fromOpaque(context).takeUnretainedValue()
-            DispatchQueue.main.async { if host.enabled { host.nextSetup() } }
+            guard let event = event else { return OSStatus(eventNotHandledErr) }
+            var identity = EventHotKeyID()
+            guard GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &identity) == noErr else { return OSStatus(eventNotHandledErr) }
+            let released = GetEventKind(event) == UInt32(kEventHotKeyReleased)
+            let id = identity.id
+            DispatchQueue.main.async {
+                if released { host.heldHotKeys.remove(id); return }
+                guard host.heldHotKeys.insert(id).inserted else { return }
+                if id == 1 && host.enabled { host.nextSetup() }
+                if id == 2 && host.enabled { host.alternateClipboard() }
+            }
             return noErr
-        }, 1, &event, pointer, &handler)
+        }, 2, &events, pointer, &handler)
         let registered = installed == noErr ? RegisterEventHotKey(UInt32(kVK_F18), 0, EventHotKeyID(signature: 0x4449414C, id: 1), GetApplicationEventTarget(), 0, &hotKey) : installed
-        request("desktop-ready", body: ["ready": registered == noErr, "error": "F18 is unavailable. Close another Dialpad instance or app using F18, then reopen."]) { state, error in
+        let copyRegistered = installed == noErr ? RegisterEventHotKey(UInt32(kVK_F19), 0, EventHotKeyID(signature: 0x4449414C, id: 2), GetApplicationEventTarget(), 0, &copyHotKey) : installed
+        hotKeyReady = registered == noErr && copyRegistered == noErr
+        request("desktop-ready", body: ["ready": hotKeyReady, "error": "F18 or F19 is unavailable. Close another Dialpad instance or app using F18, then reopen."]) { state, error in
             if let state = state { self.update(state) }
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in self.poll() }
@@ -214,6 +236,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     }
 
     func describe(_ action: [String: Any]) -> String {
+        if action["type"] as? String == "copy_paste" { return "Copy ⇄ Paste" }
         if action["type"] as? String == "shortcut" {
             let symbols = ["ctrl": "⌃", "alt": "⌥", "cmd": "⌘", "shift": "⇧"]
             let modifiers = (action["modifiers"] as? [String] ?? []).map { symbols[$0] ?? $0 }.joined()
@@ -224,10 +247,15 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     }
 
     func update(_ state: [String: Any]) {
+        if let request = state["show_request"] as? Int, request != showRequest {
+            showRequest = request
+            showEditor()
+        }
         enabled = state["enabled"] as? Bool ?? false
         if let profile = state["current"] as? [String: Any], enabled {
             currentProfile = profile
             currentName = profile["name"] as? String ?? "Setup"
+            if currentName != lastProfileName { copyNext = true; lastProfileName = currentName }
             let labels = profile["labels"] as? [String: String] ?? [:]
             let bindings = profile["bindings"] as? [String: [String: Any]] ?? [:]
             let rows = (1...6).map { i -> String in
@@ -285,6 +313,37 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
         }
     }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == "127.0.0.1", message.body as? String == "hide" else { return }
+        window.orderOut(nil)
+    }
+    func alternateClipboard() {
+        guard let bindings = currentProfile?["bindings"] as? [String: [String: Any]],
+              let action = bindings.values.first(where: { $0["type"] as? String == "copy_paste" }) else { return }
+        let prompt = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        guard AXIsProcessTrustedWithOptions(prompt) else {
+            currentName = "Allow Accessibility"
+            summary = "Allow Dialpad in System Settings → Privacy & Security → Accessibility, then press Copy / Paste again."
+            refreshMenu()
+            return
+        }
+        var flags = CGEventFlags()
+        for modifier in action["modifiers"] as? [String] ?? ["cmd"] {
+            switch modifier.lowercased() {
+            case "cmd", "win", "rcmd", "rwin": flags.insert(.maskCommand)
+            case "ctrl", "rctrl": flags.insert(.maskControl)
+            case "alt", "ralt": flags.insert(.maskAlternate)
+            case "shift", "rshift": flags.insert(.maskShift)
+            default: break
+            }
+        }
+        let code = CGKeyCode(copyNext ? kVK_ANSI_C : kVK_ANSI_V)
+        guard let down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true),
+              let up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false) else { return }
+        down.flags = flags; up.flags = flags
+        down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+        copyNext.toggle()
+    }
     @objc func showEditor() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func togglePanel() {
         if panel.isVisible { panel.orderOut(nil) } else { panel.orderFrontRegardless() }
@@ -294,6 +353,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showEditor(); return true }
     func applicationWillTerminate(_ notification: Notification) {
+        if let copyHotKey = copyHotKey { UnregisterEventHotKey(copyHotKey) }
         if let hotKey = hotKey { UnregisterEventHotKey(hotKey) }
         if let handler = handler { RemoveEventHandler(handler) }
     }
@@ -318,10 +378,21 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         guard CommandLine.arguments.contains("--smoke-test") else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             self.web.evaluateJavaScript("JSON.stringify({keys:document.querySelectorAll('.key').length,ready:runtime?.ready,connection:document.getElementById('connection').textContent,saved:document.getElementById('save-setup').textContent})") { result, error in
-                if let result = result as? String { print(result) }
-                else { print("Native smoke failed: \(String(describing: error))") }
-                fflush(stdout)
-                NSApp.terminate(nil)
+                guard let result = result as? String, let bytes = result.data(using: .utf8),
+                      var status = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] else {
+                    print("Native smoke failed: \(String(describing: error))"); fflush(stdout); NSApp.terminate(nil); return
+                }
+                self.web.evaluateJavaScript("document.getElementById('background').click()") { _, _ in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        status["background"] = !self.window.isVisible
+                        status["hotkeys"] = self.hotKeyReady
+                        self.showEditor()
+                        status["reopened"] = self.window.isVisible
+                        if let data = try? JSONSerialization.data(withJSONObject: status), let text = String(data: data, encoding: .utf8) { print(text) }
+                        fflush(stdout)
+                        NSApp.terminate(nil)
+                    }
+                }
             }
         }
     }

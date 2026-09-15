@@ -24,7 +24,17 @@ try:
         assert page.locator('#connection').inner_text()=='Keypad connected'
         expect(page.locator('#saved-setup option')).to_have_count(4)
         for name in ['Media', 'Web browsing', 'Word', 'Apple Mail']:
-            assert name in page.locator('#saved-setup').inner_text()
+            assert name in page.locator('#saved-setup').text_content()
+        expect(page.locator('#setup-editor')).not_to_have_attribute('open', '')
+        expect(page.locator('.template-card')).to_have_count(4)
+        page.get_by_role('button',name='Remove Media · Mac from cycle',exact=True).click()
+        expect(page.locator('.cycle-row')).to_have_count(3)
+        page.locator('.template-card').filter(has_text='Media · Mac').drag_to(page.locator('#cycle-list'), target_position={'x':10,'y':page.locator('#cycle-list').bounding_box()['height']-3})
+        expect(page.locator('.cycle-row')).to_have_count(4)
+        expect(page.locator('.cycle-row').last).to_contain_text('Media')
+        page.get_by_role('button',name='Move Media · Mac up',exact=True).click()
+        expect(page.locator('.cycle-row').nth(2)).to_contain_text('Media')
+        page.locator('#setup-editor > summary').click()
         for kind, first_key in [('media','play_pause'),('web','L'),('word','NONE'),('mail','NONE')]:
             page.locator('#preset').select_option(kind)
             page.locator('#load-preset').click()
@@ -46,8 +56,16 @@ try:
         page.locator('#review').wait_for(state='visible')
         assert 'Key 1  →  Ctrl + ⌥ / Alt' in page.locator('#review-content').text_content()
         assert 'NONE' not in page.locator('#review-content').text_content()
+        with page.expect_response('**/api/devices', timeout=6000):
+            pass
+        assert page.evaluate('preview !== null'), 'Automatic discovery must preserve the review'
         page.get_by_role('button',name='Cancel',exact=True).click()
         page.locator('#flow-mode').select_option('handsfree')
+        page.locator('[data-control="key5"]').click()
+        page.locator('#type').select_option('copy_paste')
+        expect(page.locator('[data-control="key5"] .key-shortcut')).to_have_text('Copy ⇄ Paste')
+        expect(page.locator('#toggle-note')).to_be_visible()
+        page.locator('#load-preset').click()
         page.locator('[data-control="key2"]').click()
         assert page.locator('#key').input_value()=='ENTER'
         page.locator('#preview').click()
@@ -88,9 +106,10 @@ try:
                 item['bindings']['dial_press'] = {'type':'shortcut','key':'F18','modifiers':[]}
             route.fulfill(json={'nonce':'mock-never-apply','layer':1,'profiles':profiles})
         page.route('**/api/setups/preview', cycle_preview)
-        expect(page.locator('#cycle-note')).to_contain_text('Desktop dial shortcut ready')
+        expect(page.locator('#cycle-note')).to_contain_text('Choose your cycling templates')
         page.locator('#save-setup').click()
         expect(page.locator('#saved-setup option')).to_have_count(1)
+        page.locator('#setup-editor > summary').click()
         page.locator('#preset').select_option('codex')
         page.locator('#load-preset').click()
         page.locator('#save-setup').click()
@@ -100,10 +119,10 @@ try:
         expect(page.locator('#review-content')).to_contain_text('Claude Code')
         expect(page.locator('#review-content')).to_contain_text('Codex terminal')
         page.get_by_role('button', name='Cancel', exact=True).click()
-        page.locator('#saved-setup').select_option('0')
-        page.locator('#edit-setup').click()
+        page.locator('.template-card').filter(has_text='Claude Code').get_by_role('button',name='Edit',exact=True).click()
         expect(page.locator('#profile-name')).to_have_value('Claude Code · Mac')
-        page.locator('#remove-setup').click()
+        page.once('dialog', lambda dialog: dialog.accept())
+        page.locator('.template-card').filter(has_text='Claude Code').get_by_role('button',name='Delete',exact=True).click()
         expect(page.locator('#saved-setup option')).to_have_count(1)
         # Render the live diagram using a mocked active state; no hardware Apply.
         current = json.loads((ROOT / 'ui/starters.json').read_text())['mac']['media']
@@ -111,7 +130,6 @@ try:
         current['bindings']['dial_press'] = {'type':'shortcut','key':'F18','modifiers':[]}
         saved_state.update(enabled=True, current=current, cycle_names=[current['name']], active=0, generation=1)
         expect(page.locator('#live-title')).to_contain_text('Media')
-        page.locator('#live-title').click()
         expect(page.locator('.mini-key')).to_have_count(6)
         expect(page.locator('.mini-dial')).to_contain_text('Next setup')
         expect(page.locator('.mini-turn').first).to_contain_text('Volume down')
@@ -119,6 +137,7 @@ try:
         page.locator('#test-input').fill('Test typing')
         page.locator('#test-input').press('Enter')
         assert 'Enter' in page.locator('#test-event').inner_text()
+        page.locator('#done-editing').click()
         page.evaluate('window.scrollTo(0,0)')
         page.screenshot(path=str(ROOT/'research'/'ui-preview.png'),full_page=True)
         page.set_viewport_size({'width':390,'height':844})

@@ -43,10 +43,30 @@ def launch(url, shutdown):
     def close():
         state['closed'] = True
         user32.UnregisterHotKey(None, 1)
+        user32.UnregisterHotKey(None, 2)
         root.destroy()
         shutdown()
 
+    clipboard = {'copy': True, 'name': None, 'binding': None}
+
+    def alternate_clipboard():
+        action = clipboard['binding']
+        if not state['enabled'] or not action:
+            return
+        modifiers = {'ctrl': 0x11, 'shift': 0x10, 'alt': 0x12, 'cmd': 0x5B, 'win': 0x5B}
+        keys = [modifiers[m] for m in action.get('modifiers', ['ctrl']) if m in modifiers]
+        key = ord('C' if clipboard['copy'] else 'V')
+        for modifier in keys:
+            user32.keybd_event(modifier, 0, 0, 0)
+        user32.keybd_event(key, 0, 0, 0)
+        user32.keybd_event(key, 0, 2, 0)
+        for modifier in reversed(keys):
+            user32.keybd_event(modifier, 0, 2, 0)
+        clipboard['copy'] = not clipboard['copy']
+
     def describe(action):
+        if action.get('type') == 'copy_paste':
+            return 'Copy / Paste'
         if action.get('type') == 'shortcut':
             return ' + '.join(action.get('modifiers', []) + ([action['key']] if action['key'] != 'NONE' else []))
         return action.get('action', '').replace('_', ' ')
@@ -55,6 +75,13 @@ def launch(url, shutdown):
         state['enabled'] = data['enabled']
         next_button.configure(state='normal' if data['enabled'] else 'disabled')
         current = data.get('current')
+        if current:
+            if clipboard['name'] != current['name']:
+                clipboard['copy'] = True
+                clipboard['name'] = current['name']
+            clipboard['binding'] = next((a for a in current['bindings'].values() if a.get('type') == 'copy_paste'), None)
+        else:
+            clipboard['binding'] = None
         if current:
             labels = current.get('labels', {})
             rows = [f"{i}  {labels.get(f'key{i}', f'Key {i}')} · {describe(current['bindings'][f'key{i}'])}" for i in range(1, 7)]
@@ -74,7 +101,10 @@ def launch(url, shutdown):
         msg = wintypes.MSG()
         # RegisterHotKey and PeekMessage run on this same desktop thread.
         while user32.PeekMessageW(ctypes.byref(msg), None, 0x0312, 0x0312, 1):
-            cycle()
+            if msg.wParam == 1:
+                cycle()
+            elif msg.wParam == 2:
+                alternate_clipboard()
         while not results.empty():
             kind, data, error = results.get_nowait()
             if kind == 'cycle':
@@ -99,9 +129,10 @@ def launch(url, shutdown):
     next_button = tk.Button(root, text='Next setup', command=cycle, state='disabled')
     next_button.pack(pady=3)
     tk.Button(root, text='Quit Dialpad', command=close).pack(pady=8)
-    root.protocol('WM_DELETE_WINDOW', close)
+    root.protocol('WM_DELETE_WINDOW', root.iconify)
     ready = bool(user32.RegisterHotKey(None, 1, 0x4000, 0x81))  # MOD_NOREPEAT, VK_F18
-    request('desktop-ready', {'ready': ready, 'error': 'F18 is in use. Close another Dialpad instance or app using F18 and reopen.'}, 'ready')
+    copy_ready = bool(user32.RegisterHotKey(None, 2, 0x4000, 0x82))
+    request('desktop-ready', {'ready': ready and copy_ready, 'error': 'F18 is in use. Close another Dialpad instance or app using F18 and reopen.'}, 'ready')
     webbrowser.open(url)
     tick()
     poll()

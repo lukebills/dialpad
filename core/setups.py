@@ -1,4 +1,4 @@
-"""Saved layouts and an explicitly armed, session-only setup cycle."""
+"""Template library, selected cycling order and resumable reviewed cycle."""
 import copy
 import json
 import os
@@ -26,6 +26,17 @@ class Setups:
         self.last_switch = 0
         self.error = ''
         self.load_failed = False
+        self.show_request = 0
+        self.order = None
+        self.restored = False
+        try:
+            order = self.path.with_name('cycle-order.json')
+            if order.exists():
+                value = json.loads(order.read_text())
+                if isinstance(value, list) and all(isinstance(n, str) for n in value):
+                    self.order = value
+        except (ValueError, OSError):
+            pass
         try:
             if self.path.exists():
                 if self.path.stat().st_size > 262144:
@@ -92,17 +103,78 @@ class Setups:
             os.fsync(stream.fileno())
         temporary.replace(self.path)
         self.profiles = checked
+        if self.order is not None:
+            self.save_order([n for n in self.order if any(p['name'] == n for p in checked)])
         # An enabled cycle keeps its reviewed snapshot until explicitly re-enabled.
         return self.state()
 
-    def snapshot(self):
+    def save_order(self, names):
+        self.selected(names)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        target = self.path.with_name('cycle-order.json')
+        temporary = target.with_suffix('.tmp')
+        temporary.write_text(json.dumps(names))
+        temporary.replace(target)
+        self.order = list(names)
+        return self.state()
+
+    def selected(self, names=None):
+        names = names if names is not None else self.order
+        if names is None:
+            return copy.deepcopy(self.profiles)
+        if not isinstance(names, list) or any(not isinstance(n, str) for n in names) or len(set(names)) != len(names):
+            raise ValueError('Choose distinct templates for the cycle.')
+        by_name = {p['name']: p for p in self.profiles}
+        if any(n not in by_name for n in names):
+            raise ValueError('A cycling template has been removed. Update your cycle.')
+        return [copy.deepcopy(by_name[n]) for n in names]
+
+    def persist_runtime(self):
+        target = self.path.with_name('active-cycle.json')
+        if not self.enabled:
+            target.unlink(missing_ok=True)
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix('.tmp')
+        temporary.write_text(json.dumps({'profiles': self.cycle_profiles,
+            'device_id': self.device_id, 'active': self.active}))
+        temporary.replace(target)
+
+    def restore(self):
+        if self.restored:
+            return
+        self.restored = True
+        target = self.path.with_name('active-cycle.json')
+        if not target.exists():
+            return
+        try:
+            if target.stat().st_size > 262144:
+                raise ValueError('Saved cycle is too large.')
+            data = json.loads(target.read_text())
+            profiles = self.checked(data['profiles'])
+            active = data['active']
+            if not profiles or type(active) is not int or not 0 <= active < len(profiles):
+                raise ValueError('Invalid active setup.')
+            if not isinstance(data['device_id'], str) or not data['device_id']:
+                raise ValueError('Invalid saved device.')
+            if any(p['bindings']['dial_press'] != {'type': 'shortcut', 'key': 'F18', 'modifiers': []} for p in profiles):
+                raise ValueError('Invalid saved dial shortcut.')
+            self.cycle_profiles = profiles
+            self.active = active
+            self.device_id = data['device_id']
+            self.enabled = True
+            self.generation += 1
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            self.error = 'Could not restore cycling. Review and enable again. ' + str(exc)
+
+    def snapshot(self, names=None):
         if not self.ready:
             raise ValueError('Open the desktop app first. Its global dial shortcut must be available.')
-        if len(self.profiles) < 2:
-            raise ValueError('Save at least two setups to cycle through.')
-        if len({p['layer'] for p in self.profiles}) != 1:
+        profiles = self.selected(names)
+        if len(profiles) < 1:
+            raise ValueError('Add at least one template to the cycle.')
+        if len({p['layer'] for p in profiles}) != 1:
             raise ValueError('Cycling setups must use the same hardware layer.')
-        profiles = copy.deepcopy(self.profiles)
         for profile in profiles:
             profile['bindings']['dial_press'] = {'type': 'shortcut', 'key': 'F18', 'modifiers': []}
             profile.setdefault('labels', {})['dial_press'] = 'Next setup'
@@ -111,7 +183,9 @@ class Setups:
     def disable(self, error=''):
         self.enabled = False
         self.error = error
+        self.restored = True
         self.active = None
+        self.persist_runtime()
         self.generation += 1
 
     def activate(self, profiles, device_id):
@@ -121,26 +195,30 @@ class Setups:
         self.enabled = True
         self.error = ''
         self.last_switch = time.monotonic()
+        self.persist_runtime()
         self.generation += 1
 
     def cycle(self, write, packets):
         if not self.enabled or not self.ready:
             raise ValueError('Setup cycling is off. Enable it from the app first.')
-        if time.monotonic() - self.last_switch < 1.2:
+        if len(self.cycle_profiles) == 1 or time.monotonic() - self.last_switch < 1.2:
             return self.state()
         index = (self.active + 1) % len(self.cycle_profiles)
         self.last_switch = time.monotonic()
         try:
+            # A crash during transfer must not restore a possibly partial layout.
+            self.path.with_name('active-cycle.json').unlink(missing_ok=True)
             write(self.device_id, packets(self.cycle_profiles[index]))
         except Exception as exc:
             self.disable('Switch failed; keypad state is unknown. ' + str(exc))
             raise
         self.active = index
+        self.persist_runtime()
         self.generation += 1
         return self.state()
 
     def state(self):
-        return {'profiles': copy.deepcopy(self.profiles), 'enabled': self.enabled,
+        return {'profiles': copy.deepcopy(self.profiles), 'order': self.order, 'show_request': self.show_request, 'enabled': self.enabled,
                 'ready': self.ready, 'active': self.active, 'generation': self.generation,
                 'current': copy.deepcopy(self.cycle_profiles[self.active]) if self.enabled else None,
                 'cycle_names': [p['name'] for p in self.cycle_profiles] if self.enabled else [],

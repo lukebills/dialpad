@@ -74,6 +74,13 @@ def encode_binding(control: str, action: dict, layer: int = 1) -> list[bytes]:
     if not isinstance(action, dict):
         raise ValueError("action must be an object")
     kind = action.get("type")
+    if kind == "copy_paste":
+        _fields(action, {"type", "modifiers"})
+        if not control.startswith('key'):
+            raise ValueError('Copy / paste is available on the six keys only.')
+        if action.get('modifiers', ['cmd']) not in (['cmd'], ['ctrl'], ['ctrl', 'shift']):
+            raise ValueError('Copy / Paste uses Command, Control, or Control + Shift.')
+        return encode_binding(control, {'type': 'shortcut', 'key': 'F19', 'modifiers': []}, layer)
     key_id = CONTROL_IDS[control]
     packets = [_packet(3, 0xfe, layer, 1, 1)]
     if kind in ("shortcut", "sequence"):
