@@ -42,7 +42,15 @@ The everyday dashboard shows the live keypad, cycling order and template library
 
 On Mac, **Run in background** or closing the window leaves the menu-bar companion running. Reopen it from the menu bar or launch Dialpad again; a second launch brings the existing window forward. **Quit** ends the companion. This does not install a login item or start it automatically after a Mac reboot. On Windows, closing the companion minimizes it to the taskbar; closing the browser editor does not stop it.
 
-To alternate Copy and Paste, edit a key and choose **Alternate Copy / Paste**, save the template, then review and enable its cycle (a single template is supported). The first press sends Copy, the second Paste, then repeats. It resets to Copy on setup changes or relaunch. One alternating key is allowed per setup. Mac uses Command; Windows uses Control (a terminal template can retain Control + Shift). On Mac the first use requests Apple Accessibility permission so Dialpad can send the shortcut to the focused app. Without permission the phase does not advance. Clipboard contents are not read by Dialpad; sending Copy to an app without a selection may leave the clipboard unchanged. This feature still needs physical testing and Windows validation.
+To alternate Copy and Paste, edit a key and choose **Alternate Copy / Paste**, save the template, then review and enable its cycle (a single template is supported). The first press sends Copy, the second Paste, then repeats. It resets to Copy on setup changes or relaunch. One alternating key is allowed per setup. Mac uses Command; Windows uses Control (a terminal template can retain Control + Shift). On Mac the first use requests Apple Accessibility permission so Dialpad can send the shortcut to the focused app. Without permission the phase does not advance. Plain-text mode reads the newly copied text locally to remove its rich formats; clipboard text is never logged, saved to disk, or sent to the server. If Copy/Cut does not change the clipboard within one second, the next tap stays on Copy. This feature still needs physical testing and Windows validation.
+
+Clipboard options are inside the key editor:
+- **Copy formatting:** Plain text (default) or Keep original formatting. Plain text removes rich text/HTML from a new text copy or cut; image and file clipboard items are preserved.
+- **Return to Copy after inactivity:** defaults to 10 seconds; choose 5/10/30/60/120 seconds or Never. This resets the next action, not the clipboard contents.
+- **Double-tap action:** Cut (default) or Off. With Cut enabled, a single tap waits 320 ms; two taps in that window send only Cut. Cut leaves the next action on Paste until the idle reset. With it off, each tap acts immediately.
+
+Switching layouts or relaunching resets to Copy and cancels pending gestures. A foreground-app change cancels a pending action rather than sending it into the newly focused app. Clipboard conversion briefly waits for the Copy/Cut result; further taps during that conversion are ignored. The app does not continuously monitor clipboard contents. Saved older Copy/Paste actions use the new defaults when their options are absent.
+
 
 ## Portability and current limits
 

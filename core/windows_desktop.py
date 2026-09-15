@@ -3,6 +3,8 @@ import ctypes
 from ctypes import wintypes
 import json
 import queue
+import time
+from core.clipboard_gesture import ClipboardGesture
 import threading
 import tkinter as tk
 import urllib.request
@@ -47,22 +49,82 @@ def launch(url, shutdown):
         root.destroy()
         shutdown()
 
-    clipboard = {'copy': True, 'name': None, 'binding': None}
+    gesture = ClipboardGesture()
+    clipboard = {'context': None, 'binding': None, 'timer': None, 'focus': None, 'busy': False}
+    user32.GetForegroundWindow.restype = wintypes.HWND
 
-    def alternate_clipboard():
-        action = clipboard['binding']
-        if not state['enabled'] or not action:
+    def reset_clipboard():
+        if clipboard['timer'] is not None:
+            root.after_cancel(clipboard['timer'])
+        clipboard.update(timer=None, focus=None, busy=False)
+        gesture.reset()
+
+    def finish_copy(operation, action, before, context, focus, attempts=25):
+        if not state['enabled'] or context != clipboard['context']:
             return
-        modifiers = {'ctrl': 0x11, 'shift': 0x10, 'alt': 0x12, 'cmd': 0x5B, 'win': 0x5B}
+        if user32.GetForegroundWindow() != focus:
+            reset_clipboard()
+            return
+        count = user32.GetClipboardSequenceNumber()
+        if count != before:
+            if action.get('formatting', 'plain') == 'plain' and not any(user32.IsClipboardFormatAvailable(f) for f in (2, 8, 15, 17)):
+                try:
+                    value = root.clipboard_get()
+                    if user32.GetClipboardSequenceNumber() == count:
+                        root.clipboard_clear()
+                        root.clipboard_append(value)
+                except tk.TclError:
+                    pass  # Non-text clipboard data stays untouched.
+            clipboard['busy'] = False
+            gesture.complete(operation, time.monotonic())
+        elif attempts > 1:
+            root.after(40, lambda: finish_copy(operation, action, before, context, focus, attempts-1))
+        else:
+            reset_clipboard()
+
+    def perform_clipboard(operation, action, focus):
+        clipboard['timer'] = None
+        if not state['enabled'] or state['pending'] or not focus or user32.GetForegroundWindow() != focus:
+            reset_clipboard()
+            return
+        modifiers = {'ctrl': 0x11, 'shift': 0x10, 'cmd': 0x5B}
         keys = [modifiers[m] for m in action.get('modifiers', ['ctrl']) if m in modifiers]
-        key = ord('C' if clipboard['copy'] else 'V')
+        key = ord({'copy': 'C', 'paste': 'V', 'cut': 'X'}[operation])
+        before = user32.GetClipboardSequenceNumber()
         for modifier in keys:
             user32.keybd_event(modifier, 0, 0, 0)
         user32.keybd_event(key, 0, 0, 0)
         user32.keybd_event(key, 0, 2, 0)
         for modifier in reversed(keys):
             user32.keybd_event(modifier, 0, 2, 0)
-        clipboard['copy'] = not clipboard['copy']
+        if operation == 'paste':
+            gesture.complete(operation, time.monotonic())
+        else:
+            clipboard['busy'] = True
+            context = clipboard['context']
+            root.after(40, lambda: finish_copy(operation, action, before, context, focus))
+
+    def alternate_clipboard():
+        action = clipboard['binding']
+        if not state['enabled'] or state['pending'] or not action or clipboard['busy']:
+            return
+        focus = user32.GetForegroundWindow()
+        if gesture.pending is not None and focus != clipboard['focus']:
+            reset_clipboard()
+        now = time.monotonic()
+        if gesture.pending is not None and now - gesture.pending > gesture.delay:
+            root.after_cancel(clipboard['timer'])
+            perform_clipboard(gesture.flush(), action, clipboard['focus'])
+            return
+        if clipboard['timer'] is not None:
+            root.after_cancel(clipboard['timer'])
+            clipboard['timer'] = None
+        clipboard['focus'] = focus
+        operation = gesture.tap(now, action.get('reset_seconds', 10), action.get('double_tap_cut', True))
+        if operation:
+            perform_clipboard(operation, action, focus)
+        else:
+            clipboard['timer'] = root.after(320, lambda: perform_clipboard(gesture.flush(), action, focus))
 
     def describe(action):
         if action.get('type') == 'copy_paste':
@@ -76,12 +138,15 @@ def launch(url, shutdown):
         next_button.configure(state='normal' if data['enabled'] else 'disabled')
         current = data.get('current')
         if current:
-            if clipboard['name'] != current['name']:
-                clipboard['copy'] = True
-                clipboard['name'] = current['name']
+            context = (current['name'], data['generation'])
+            if clipboard['context'] != context:
+                reset_clipboard()
+                clipboard['context'] = context
             clipboard['binding'] = next((a for a in current['bindings'].values() if a.get('type') == 'copy_paste'), None)
         else:
+            reset_clipboard()
             clipboard['binding'] = None
+            clipboard['context'] = None
         if current:
             labels = current.get('labels', {})
             rows = [f"{i}  {labels.get(f'key{i}', f'Key {i}')} · {describe(current['bindings'][f'key{i}'])}" for i in range(1, 7)]
@@ -116,6 +181,8 @@ def launch(url, shutdown):
             elif error:
                 text.set('Connection or transfer failed.\n' + error)
                 state['enabled'] = False
+                reset_clipboard()
+                clipboard['context'] = None
                 next_button.configure(state='disabled')
         root.after(50, tick)
 

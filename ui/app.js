@@ -56,7 +56,8 @@ function render(){
 function select(c){selected=c;recording=false;render();}
 function editor(){
  const a=profile.bindings[selected];$('control-title').textContent=names[selected];$('label').value=profile.labels[selected]||'';$('type').value=a.type;
- $('shortcut-fields').hidden=a.type!=='shortcut';$('action-field').hidden=['shortcut','copy_paste'].includes(a.type);$('toggle-note').hidden=a.type!=='copy_paste';
+ $('shortcut-fields').hidden=a.type!=='shortcut';$('action-field').hidden=['shortcut','copy_paste'].includes(a.type);$('toggle-note').hidden=a.type!=='copy_paste';$('clipboard-options').hidden=a.type!=='copy_paste';
+ if(a.type==='copy_paste'){$('copy-format').value=a.formatting||'plain';const reset=String(a.reset_seconds??10);if(![...$('copy-reset').options].some(o=>o.value===reset))$('copy-reset').add(option(reset,reset+' seconds'));$('copy-reset').value=reset;$('copy-double').value=String(a.double_tap_cut??true);}
  if(a.type==='shortcut'){$('key').value=a.key.toUpperCase();document.querySelectorAll('.modifiers input').forEach(i=>i.checked=a.modifiers.includes(i.value));}
  else{$('action').replaceChildren();(actions[a.type]||[]).forEach(v=>$('action').add(option(v,v.replaceAll('_',' '))));$('action').value=a.action;}
  $('record').textContent=recording?'Press your shortcut…':'Record shortcut';
@@ -66,6 +67,7 @@ function updateAction(){
  profile.bindings[selected]=type==='shortcut'?shortcut($('key').value,[...document.querySelectorAll('.modifiers input:checked')].map(i=>i.value)):{type,action:$('action').value};render();
 }
 $('type').onchange=()=>{const type=$('type').value;if(type==='copy_paste'&&!selected.startsWith('key')){message('Choose one of the six keys for Copy / Paste.',true);editor();return;}profile.bindings[selected]=type==='copy_paste'?{type,modifiers:profile.bindings[selected].type==='shortcut'&&profile.bindings[selected].key==='V'&&profile.bindings[selected].modifiers.length?[...profile.bindings[selected].modifiers]:$('platform').value==='mac'?['cmd']:['ctrl']}:type==='shortcut'?shortcut('ENTER'):{type,action:actions[type][0]};if(type==='copy_paste')profile.labels[selected]='Copy / Paste';render();};
+for(const id of ['copy-format','copy-reset','copy-double'])$(id).onchange=()=>{Object.assign(profile.bindings[selected],{formatting:$('copy-format').value,reset_seconds:Number($('copy-reset').value),double_tap_cut:$('copy-double').value==='true'});render();};
 $('key').onchange=updateAction;$('action').onchange=updateAction;document.querySelectorAll('.modifiers input').forEach(i=>i.onchange=updateAction);
 $('label').oninput=()=>{profile.labels[selected]=$('label').value;const label=$('keys').querySelector(`[data-control="${selected}"] .key-label`);if(label)label.textContent=$('label').value;invalidate();};
 $('profile-name').oninput=()=>{profile.name=$('profile-name').value;$('profile-title').textContent=profile.name;invalidate();};$('layer').onchange=()=>{profile.layer=Number($('layer').value);invalidate();};

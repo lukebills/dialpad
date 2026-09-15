@@ -65,6 +65,22 @@ try:
         page.locator('#type').select_option('copy_paste')
         expect(page.locator('[data-control="key5"] .key-shortcut')).to_have_text('Copy ⇄ Paste')
         expect(page.locator('#toggle-note')).to_be_visible()
+        expect(page.locator('#copy-format')).to_have_value('plain')
+        expect(page.locator('#copy-reset')).to_have_value('10')
+        expect(page.locator('#copy-double')).to_have_value('true')
+        page.locator('#copy-format').select_option('formatted')
+        page.locator('#copy-reset').select_option('30')
+        page.locator('#copy-double').select_option('false')
+        with page.expect_download() as toggle_download:
+            page.locator('#export').click()
+        toggle_profile=json.loads(Path(toggle_download.value.path()).read_text())
+        assert toggle_profile['bindings']['key5']['formatting']=='formatted'
+        assert toggle_profile['bindings']['key5']['reset_seconds']==30
+        assert toggle_profile['bindings']['key5']['double_tap_cut'] is False
+        page.locator('#file').set_input_files({'name':'toggle.json','mimeType':'application/json','buffer':json.dumps(toggle_profile).encode()})
+        expect(page.locator('#copy-format')).to_have_value('formatted')
+        expect(page.locator('#copy-reset')).to_have_value('30')
+        expect(page.locator('#copy-double')).to_have_value('false')
         page.locator('#load-preset').click()
         page.locator('[data-control="key2"]').click()
         assert page.locator('#key').input_value()=='ENTER'

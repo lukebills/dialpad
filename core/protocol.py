@@ -75,7 +75,13 @@ def encode_binding(control: str, action: dict, layer: int = 1) -> list[bytes]:
         raise ValueError("action must be an object")
     kind = action.get("type")
     if kind == "copy_paste":
-        _fields(action, {"type", "modifiers"})
+        _fields(action, {"type", "modifiers", "formatting", "reset_seconds", "double_tap_cut"})
+        if action.get('formatting', 'plain') not in ('plain', 'formatted'):
+            raise ValueError('Choose plain text or original formatting.')
+        if type(action.get('reset_seconds', 10)) is not int or not 0 <= action.get('reset_seconds', 10) <= 300:
+            raise ValueError('Copy reset must be 0–300 seconds (0 means never).')
+        if type(action.get('double_tap_cut', True)) is not bool:
+            raise ValueError('Double-tap Cut must be on or off.')
         if not control.startswith('key'):
             raise ValueError('Copy / paste is available on the six keys only.')
         if action.get('modifiers', ['cmd']) not in (['cmd'], ['ctrl'], ['ctrl', 'shift']):

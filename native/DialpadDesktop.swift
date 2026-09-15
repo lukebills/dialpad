@@ -3,6 +3,31 @@ import WebKit
 import Carbon
 import ApplicationServices
 
+// Pure gesture state, exercised by --clipboard-state-test without OS input.
+struct ClipboardGesture {
+    var copyNext = true
+    var lastAction: TimeInterval?
+    var pending: TimeInterval?
+    mutating func tap(now: TimeInterval, reset: Int, doubleTap: Bool) -> String? {
+        if let pending = pending, now - pending <= 0.320 { self.pending = nil; return "cut" }
+        if let last = lastAction, reset > 0 && now - last >= Double(reset) { copyNext = true }
+        if doubleTap { pending = now; return nil }
+        return copyNext ? "copy" : "paste"
+    }
+    mutating func flush() -> String { pending = nil; return copyNext ? "copy" : "paste" }
+    mutating func complete(_ operation: String, now: TimeInterval) { copyNext = operation == "paste"; lastAction = now }
+}
+
+// Only called after an explicit Copy/Cut has changed the clipboard.
+@discardableResult func stripTextFormatting(_ board: NSPasteboard) -> Bool {
+    let count = board.changeCount
+    guard let items = board.pasteboardItems, items.count == 1,
+          !items[0].types.contains(.fileURL), !items[0].types.contains(.png), !items[0].types.contains(.tiff),
+          let text = board.string(forType: .string), count == board.changeCount else { return false }
+    board.clearContents()
+    return board.setString(text, forType: .string)
+}
+
 // One scalable diagram is shared by the menu-bar preview and floating window.
 final class KeypadPreview: NSView {
     var profile: [String: Any]?
@@ -93,7 +118,11 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     var currentProfile: [String: Any]?
     var menuFingerprint = ""
     var copyHotKey: EventHotKeyRef?
-    var copyNext = true
+    var clipboardGesture = ClipboardGesture()
+    var clipboardTimer: DispatchWorkItem?
+    var clipboardFocus: pid_t?
+    var clipboardBusy = false
+    var clipboardContext = ""
     var heldHotKeys = Set<UInt32>()
     var lastProfileName = ""
     var hotKeyReady = false
@@ -227,6 +256,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             if let state = state { self.update(state) }
             else {
                 self.enabled = false
+                self.resetClipboard(); self.clipboardContext = ""
                 self.currentName = "Disconnected"
                 self.summary = "Dialpad is disconnected. Reopen the app to reconnect."
                 self.currentProfile = nil
@@ -255,7 +285,8 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         if let profile = state["current"] as? [String: Any], enabled {
             currentProfile = profile
             currentName = profile["name"] as? String ?? "Setup"
-            if currentName != lastProfileName { copyNext = true; lastProfileName = currentName }
+            let context = currentName + String(state["generation"] as? Int ?? 0)
+            if context != clipboardContext { resetClipboard(); clipboardContext = context }
             let labels = profile["labels"] as? [String: String] ?? [:]
             let bindings = profile["bindings"] as? [String: [String: Any]] ?? [:]
             let rows = (1...6).map { i -> String in
@@ -264,6 +295,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
             summary = currentName + "\n\n" + rows.joined(separator: "\n\n") + "\n\n↶ \(describe(bindings["dial_ccw"] ?? [:]))   ↷ \(describe(bindings["dial_cw"] ?? [:]))\nPress dial → Next setup"
         } else {
+            resetClipboard(); clipboardContext = ""
             currentProfile = nil
             currentName = "Cycling off"
             let error = state["error"] as? String ?? ""
@@ -317,32 +349,81 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == "127.0.0.1", message.body as? String == "hide" else { return }
         window.orderOut(nil)
     }
+    func resetClipboard() {
+        clipboardTimer?.cancel(); clipboardTimer = nil
+        clipboardGesture = ClipboardGesture(); clipboardFocus = nil; clipboardBusy = false
+    }
     func alternateClipboard() {
-        guard let bindings = currentProfile?["bindings"] as? [String: [String: Any]],
+        guard !clipboardBusy, !cycling,
+              let bindings = currentProfile?["bindings"] as? [String: [String: Any]],
               let action = bindings.values.first(where: { $0["type"] as? String == "copy_paste" }) else { return }
         let prompt = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         guard AXIsProcessTrustedWithOptions(prompt) else {
             currentName = "Allow Accessibility"
             summary = "Allow Dialpad in System Settings → Privacy & Security → Accessibility, then press Copy / Paste again."
-            refreshMenu()
+            refreshMenu(); return
+        }
+        let focus = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        if clipboardGesture.pending != nil && focus != clipboardFocus { resetClipboard() }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let pending = clipboardGesture.pending, now - pending > 0.320 {
+            clipboardTimer?.cancel()
+            performClipboard(clipboardGesture.flush(), action: action, focus: clipboardFocus)
             return
         }
+        clipboardFocus = focus
+        clipboardTimer?.cancel()
+        if let operation = clipboardGesture.tap(now: now, reset: action["reset_seconds"] as? Int ?? 10, doubleTap: action["double_tap_cut"] as? Bool ?? true) {
+            performClipboard(operation, action: action, focus: focus)
+        } else {
+            let context = clipboardContext
+            let task = DispatchWorkItem { [weak self] in
+                guard let self = self, self.enabled, context == self.clipboardContext else { return }
+                self.performClipboard(self.clipboardGesture.flush(), action: action, focus: focus)
+            }
+            clipboardTimer = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.320, execute: task)
+        }
+    }
+    func performClipboard(_ operation: String, action: [String: Any], focus: pid_t?) {
+        guard enabled, !cycling, focus != nil, NSWorkspace.shared.frontmostApplication?.processIdentifier == focus else { resetClipboard(); return }
         var flags = CGEventFlags()
         for modifier in action["modifiers"] as? [String] ?? ["cmd"] {
             switch modifier.lowercased() {
-            case "cmd", "win", "rcmd", "rwin": flags.insert(.maskCommand)
-            case "ctrl", "rctrl": flags.insert(.maskControl)
-            case "alt", "ralt": flags.insert(.maskAlternate)
-            case "shift", "rshift": flags.insert(.maskShift)
+            case "cmd": flags.insert(.maskCommand)
+            case "ctrl": flags.insert(.maskControl)
+            case "shift": flags.insert(.maskShift)
             default: break
             }
         }
-        let code = CGKeyCode(copyNext ? kVK_ANSI_C : kVK_ANSI_V)
+        let code = CGKeyCode(operation == "cut" ? kVK_ANSI_X : operation == "copy" ? kVK_ANSI_C : kVK_ANSI_V)
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false) else { return }
+        let before = NSPasteboard.general.changeCount
         down.flags = flags; up.flags = flags
         down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
-        copyNext.toggle()
+        if operation == "paste" {
+            clipboardGesture.complete(operation, now: ProcessInfo.processInfo.systemUptime)
+            return
+        }
+        clipboardBusy = true
+        finishCopy(operation, action: action, before: before, context: clipboardContext, focus: focus, attempts: 25)
+    }
+    func finishCopy(_ operation: String, action: [String: Any], before: Int, context: String, focus: pid_t?, attempts: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+            guard let self = self, self.enabled, context == self.clipboardContext else { return }
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == focus else { self.resetClipboard(); return }
+            let board = NSPasteboard.general
+            if board.changeCount != before {
+                if (action["formatting"] as? String ?? "plain") == "plain" { stripTextFormatting(board) }
+                self.clipboardBusy = false
+                self.clipboardGesture.complete(operation, now: ProcessInfo.processInfo.systemUptime)
+            } else if attempts > 1 {
+                self.finishCopy(operation, action: action, before: before, context: context, focus: focus, attempts: attempts - 1)
+            } else {
+                self.resetClipboard() // No new clipboard content: do not paste stale data on the next tap.
+            }
+        }
     }
     @objc func showEditor() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func togglePanel() {
@@ -396,6 +477,48 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
         }
     }
+}
+
+if CommandLine.arguments.contains("--clipboard-format-test") {
+    let board = NSPasteboard.withUniqueName()
+    defer { board.releaseGlobally() }
+    let rich = NSPasteboardItem()
+    rich.setString("Hello café 👋", forType: .string)
+    rich.setString("<b>Hello café 👋</b>", forType: .html)
+    board.writeObjects([rich])
+    precondition(stripTextFormatting(board))
+    precondition(board.string(forType: .string) == "Hello café 👋")
+    precondition(board.string(forType: .html) == nil)
+    let file = NSPasteboardItem()
+    file.setString("file:///tmp/example.txt", forType: .fileURL)
+    file.setString("example.txt", forType: .string)
+    board.clearContents(); board.writeObjects([file])
+    precondition(!stripTextFormatting(board))
+    precondition(board.string(forType: .fileURL) != nil)
+    let picture = NSPasteboardItem()
+    picture.setData(Data([1, 2, 3]), forType: .png)
+    picture.setString("image caption", forType: .string)
+    board.clearContents(); board.writeObjects([picture])
+    precondition(!stripTextFormatting(board))
+    print("Formatting checks passed on a private test pasteboard; general clipboard untouched.")
+    exit(0)
+}
+
+if CommandLine.arguments.contains("--clipboard-state-test") {
+    var g = ClipboardGesture()
+    precondition(g.tap(now: 0, reset: 10, doubleTap: true) == nil)
+    precondition(g.tap(now: 0.2, reset: 10, doubleTap: true) == "cut")
+    g.complete("cut", now: 0.2)
+    precondition(g.tap(now: 1, reset: 10, doubleTap: false) == "paste")
+    g.complete("paste", now: 1)
+    precondition(g.tap(now: 2, reset: 10, doubleTap: true) == nil)
+    precondition(g.flush() == "copy")
+    g.complete("copy", now: 2.4)
+    precondition(g.tap(now: 12.4, reset: 10, doubleTap: false) == "copy")
+    g.complete("copy", now: 13)
+    precondition(g.tap(now: 500, reset: 0, doubleTap: false) == "paste")
+    print("Clipboard gesture checks passed; no keyboard or clipboard access.")
+    exit(0)
 }
 
 // Render a supplied fixture for visual review, without starting the server or hotkey.
