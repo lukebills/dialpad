@@ -100,3 +100,10 @@ Removed the template library and separate Edit keys & setup options section. Liv
 The per-profile upsert API preserves unrelated setups and cycling position on rename, and checks the caller's last saved snapshot to reject stale overwrites. Switching setups flushes pending edits. Save errors stay visible and prevent losing the current draft through dropdown navigation, background or Quit actions. An enabled hardware cycle remains its reviewed snapshot until Apply.
 
 63 Python tests passed, including per-profile autosave, collision/conflict handling, Unicode persistence and Windows singleton/hotkey-worker checks. Source and packaged UI tests passed for autosave, rapid switching, rename, setup capacity/deletion, checkbox inclusion/reordering, multi-tap editing, import/export, review cancellation and 390px mobile layout. Final packaged native checks passed for hotkeys, background hide/reopen and keypad discovery; strict deep signature verification passed. Windows runtime and physical key delivery are not verified. No hardware writes or clipboard events were sent. See PLATFORM-REVIEW.md for review findings and fixes.
+
+
+## Public version 0.1.0 release (2026-09-16)
+
+Published the source to https://github.com/lukebills/dialpad and tagged release commit 9262a51 as v0.1.0. GitHub Actions run 35047827170 built both native packages and published versioned ZIP/checksum assets. Both OS unit-test runs passed. The actual packaged Windows EXE passed isolated-settings startup, preloaded-profile loading, global hotkey registration, read-only device enumeration, duplicate-launch reuse and graceful quit on the Windows runner. No physical keypad was attached or programmed. Mac signature verification passed. The GitHub Mac artifact is ad-hoc signed; the separate local Mac artifact retains its configured development signature.
+
+README documents AliExpress-style six-key/one-dial hardware, CH57x-2 identity constraints, customizable source, portable packaging, and direct PowerShell download/extract/run commands. Public downloads require no GitHub login.
