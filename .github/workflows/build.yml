@@ -48,6 +48,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Windows-window-preview
+          overwrite: true
           path: build/windows-preview.png
       - uses: actions/upload-artifact@v4
         with:
