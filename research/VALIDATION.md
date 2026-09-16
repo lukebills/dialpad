@@ -107,3 +107,20 @@ The per-profile upsert API preserves unrelated setups and cycling position on re
 Published the source to https://github.com/lukebills/dialpad and tagged release commit 9262a51 as v0.1.0. GitHub Actions run 35047827170 built both native packages and published versioned ZIP/checksum assets. Both OS unit-test runs passed. The actual packaged Windows EXE passed isolated-settings startup, preloaded-profile loading, global hotkey registration, read-only device enumeration, duplicate-launch reuse and graceful quit on the Windows runner. No physical keypad was attached or programmed. Mac signature verification passed. The GitHub Mac artifact is ad-hoc signed; the separate local Mac artifact retains its configured development signature.
 
 README documents AliExpress-style six-key/one-dial hardware, CH57x-2 identity constraints, customizable source, portable packaging, and direct PowerShell download/extract/run commands. Public downloads require no GitHub login.
+
+## Rapid cycling and local agent guide (2026-09-16)
+
+Removed the 1.2-second runtime cooldown. Mac and Windows desktop companions
+retain presses during a transfer and drain one request at a time. Held-key
+repeat suppression remains in the native hotkey layer. Failure or disabling
+clears waiting presses; the transfer in progress retains its slot until done.
+The API still rejects concurrent transfers, so external agents serialize calls.
+
+67 unit tests pass, including rapid snapshot cycling, Windows queue bursts and
+cancellation, authenticated agent discovery and the guide's example profile.
+The native Swift queue self-test passes. The signed Mac build passes signature
+verification, packaged UI smoke (including the bundled guide) and native WebKit,
+background and hotkey-registration smoke. Tests use isolated settings and
+mocked/blocked USB writes. Physical rapid-press behavior needs a user test;
+Windows integration changes have not been run on a Windows host in this update.
+The public 0.1.0 release has not been replaced by this local rebuild.

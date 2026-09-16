@@ -29,6 +29,8 @@ jobs:
       - if: runner.os == 'Windows'
         run: python scripts/smoke_windows_package.py
       - if: runner.os == 'macOS'
+        run: dist/Dialpad.app/Contents/Frameworks/DialpadDesktop --cycle-queue-test
+      - if: runner.os == 'macOS'
         run: codesign --verify --deep --strict dist/Dialpad.app
       - run: python scripts/package_release.py
       - uses: actions/upload-artifact@v4

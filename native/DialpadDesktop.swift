@@ -123,6 +123,22 @@ final class KeypadPreview: NSView {
 }
 
 // The host receives the session URL on stdin, never through the process arguments.
+struct CycleQueue {
+    var pending = 0
+    var busy = false
+    mutating func press() { pending += 1 }
+    mutating func start() -> Bool {
+        guard !busy, pending > 0 else { return false }
+        pending -= 1; busy = true
+        return true
+    }
+    mutating func finish(success: Bool = true) {
+        busy = false
+        if !success { cancel() }
+    }
+    mutating func cancel() { pending = 0 }
+}
+
 final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     let url: URL
     let token: String
@@ -154,7 +170,8 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     var handler: EventHandlerRef?
     var timer: Timer?
     var enabled = false
-    var cycling = false
+    var cycleQueue = CycleQueue()
+    var cycling: Bool { cycleQueue.busy }
     var polling = false
     var summary = "Setup cycling is off.\nSave two setups in the editor to get started."
     var currentName = "Cycling off"
@@ -271,6 +288,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             if let state = state { self.update(state) }
             else {
                 self.enabled = false
+                self.cycleQueue.cancel()
                 self.resetClipboard(); self.clipboardContext = ""
                 self.currentName = "Disconnected"
                 self.summary = "Dialpad is disconnected. Reopen the app to reconnect."
@@ -300,6 +318,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             showEditor()
         }
         enabled = state["enabled"] as? Bool ?? false
+        if !enabled { cycleQueue.cancel() }
         if let profile = state["current"] as? [String: Any], enabled {
             currentProfile = profile
             currentName = profile["name"] as? String ?? "Setup"
@@ -355,18 +374,26 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     }
 
     @objc func nextSetup() {
-        guard enabled && !cycling else { return }
+        guard enabled else { return }
+        cycleQueue.press()
+        drainCycles()
+    }
+
+    func drainCycles() {
+        guard enabled, cycleQueue.start() else { return }
         resetClipboard()
-        cycling = true
         request("setups/cycle", body: [:]) { state, error in
-            self.cycling = false
+            self.cycleQueue.finish(success: error == nil)
             if let state = state, state["generation"] != nil { self.update(state) }
             if let error = error {
+                self.cycleQueue.cancel()
                 self.currentName = "Switch failed"
                 self.summary = error
                 self.currentProfile = nil
                 self.refreshMenu()
                 self.poll()
+            } else {
+                self.drainCycles()
             }
         }
     }
@@ -622,6 +649,20 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
         }
     }
+}
+
+if CommandLine.arguments.contains("--cycle-queue-test") {
+    var queue = CycleQueue()
+    queue.press(); precondition(queue.start())
+    for _ in 0..<10 { queue.press(); precondition(!queue.start()) }
+    for _ in 0..<10 { queue.finish(); precondition(queue.start()) }
+    queue.finish(); precondition(!queue.start())
+    queue.press(); precondition(queue.start()); queue.press()
+    queue.finish(success: false); precondition(!queue.start())
+    queue.press(); precondition(queue.start()); queue.press(); queue.cancel()
+    precondition(queue.busy); queue.finish(); precondition(!queue.start())
+    print("Native rapid-cycle queue passed: no lost presses, one transfer at a time, cancellation and failure.")
+    exit(0)
 }
 
 if CommandLine.arguments.contains("--permission-state-test") {

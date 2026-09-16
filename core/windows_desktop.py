@@ -1,4 +1,4 @@
-"""Windows companion: floating layout, F18 global hotkey and browser editor."""
+"""Windows background gestures and clipboard, with a native WebView2 editor."""
 import ctypes
 from ctypes import wintypes
 import json
@@ -6,26 +6,29 @@ import queue
 import time
 from core.clipboard_gesture import ClipboardGesture
 from core.multi_tap import MultiTapGesture
+from core.cycle_queue import CycleQueue
 from core.windows_hotkeys import WindowsHotkeys
+from core.windows_window import WindowsEditor
 import threading
 import tkinter as tk
 import urllib.request
-import webbrowser
 
 
-def launch(url, shutdown):
+def launch(url, shutdown, settings_folder):
     base, token = url.split('#', 1)
     results = queue.Queue()
     user32 = ctypes.windll.user32
     root = tk.Tk()
-    root.title('Dialpad · live layout')
-    root.geometry('380x400')
-    root.configure(bg='#f5f4ef')
-    root.iconify()  # Keep the companion in the taskbar; no floating live-layout popup.
-    text = tk.StringVar(value='Connecting…')
-    tk.Label(root, textvariable=text, bg='#f5f4ef', fg='#293e2f', justify='left',
-             wraplength=345, padx=18, pady=18).pack(fill='both', expand=True)
+    root.withdraw()  # Tk services clipboard/timers only; the visible editor is native WebView2.
+    try:
+        editor = WindowsEditor(url, settings_folder, lambda event: results.put(('window', event, None)))
+    except Exception as exc:
+        user32.MessageBoxW(None, str(exc), 'Dialpad could not start', 0x10)
+        root.destroy()
+        shutdown()
+        return
     state = {'enabled': False, 'generation': -1, 'pending': False, 'polling': False, 'closed': False, 'show_request': 0}
+    cycle_queue = CycleQueue()
     hotkeys = WindowsHotkeys(lambda kind, data: results.put(('hotkey-' + kind, data, None)))
 
     def request(path, body=None, kind='poll'):
@@ -41,7 +44,12 @@ def launch(url, shutdown):
         threading.Thread(target=worker, daemon=True).start()
 
     def cycle():
-        if state['enabled'] and not state['pending']:
+        if state['enabled']:
+            cycle_queue.press()
+            drain_cycles()
+
+    def drain_cycles():
+        if state['enabled'] and cycle_queue.start():
             reset_multi()
             state['pending'] = True
             request('setups/cycle', {}, 'cycle')
@@ -49,6 +57,7 @@ def launch(url, shutdown):
     def close():
         state['closed'] = True
         hotkeys.stop()
+        editor.close()
         root.destroy()
         shutdown()
 
@@ -204,25 +213,15 @@ def launch(url, shutdown):
                     emit_multi(binding[name], focus, context)
             item['timer'] = root.after(binding.get('window_ms', 350), flush)
 
-    def describe(action):
-        if action.get('type') == 'multi_tap':
-            return ' / '.join(describe(action[name]) for name in ('single', 'double', 'triple'))
-        if action.get('type') == 'copy_paste':
-            return 'Copy / Paste'
-        if action.get('type') == 'shortcut':
-            return ' + '.join(action.get('modifiers', []) + ([action['key']] if action['key'] != 'NONE' else []))
-        return action.get('action', '').replace('_', ' ')
-
     def update(data):
         show_request = data.get('show_request', 0)
         if show_request != state['show_request']:
             state['show_request'] = show_request
-            webbrowser.open(url)
+            editor.show()
         state['enabled'] = data['enabled']
         if not state['enabled']:
             reset_multi()
             reset_clipboard()
-        next_button.configure(state='normal' if data['enabled'] else 'disabled')
         current = data.get('current')
         if current:
             context = (current['name'], data['generation'])
@@ -241,20 +240,20 @@ def launch(url, shutdown):
                 item['binding'] = None
             clipboard['binding'] = None
             clipboard['context'] = None
-        if current:
-            labels = current.get('labels', {})
-            rows = [f"{i}  {labels.get(f'key{i}', f'Key {i}')} · {describe(current['bindings'][f'key{i}'])}" for i in range(1, 7)]
-            text.set(current['name'] + '\n\n' + '\n\n'.join(rows) + '\n\nTurn: ' +
-                     describe(current['bindings']['dial_ccw']) + ' / ' + describe(current['bindings']['dial_cw']) + '\nPress dial → Next setup')
-            root.title('Dialpad · ' + current['name'])
-        else:
-            root.title('Dialpad · cycling off')
-            text.set(data.get('error') or 'Cycling is off.\n\nSave two setups and enable cycling in the editor.\n\nThe keypad keeps its last bindings. Apply a normal layout to restore the dial press.')
+        name = current['name'] if current else ('Needs attention' if data.get('error') else 'Cycling off')
+        if name != state.get('window_title'):
+            editor.status(name)
+            state['window_title'] = name
         state['generation'] = data['generation']
 
     def tick():
         while not results.empty():
             kind, data, error = results.get_nowait()
+            if kind == 'window':
+                if data.get('kind') == 'exit':
+                    close()
+                    return
+                continue
             if kind == 'hotkey-ready':
                 request('desktop-ready', data, 'ready')
                 continue
@@ -267,18 +266,23 @@ def launch(url, shutdown):
                     multi_tap(f'key{data-2}')
                 continue
             if kind == 'cycle':
+                cycle_queue.finish(success=not error)
                 state['pending'] = False
             if kind == 'poll':
                 state['polling'] = False
             if data:
                 update(data)
             elif error:
-                text.set('Connection or transfer failed.\n' + error)
+                cycle_queue.cancel()
+                editor.status('Connection or transfer failed')
                 state['enabled'] = False
                 reset_clipboard()
                 reset_multi()
                 clipboard['context'] = None
-                next_button.configure(state='disabled')
+            if not state['enabled']:
+                cycle_queue.cancel()
+            if kind == 'cycle' and not error:
+                drain_cycles()
         root.after(50, tick)
 
     def poll():
@@ -287,16 +291,11 @@ def launch(url, shutdown):
             request('setups')
         root.after(750, poll)
 
-    tk.Button(root, text='Open editor', command=lambda: webbrowser.open(url)).pack(pady=3)
-    next_button = tk.Button(root, text='Next setup', command=cycle, state='disabled')
-    next_button.pack(pady=3)
-    tk.Button(root, text='Quit Dialpad', command=close).pack(pady=8)
-    root.protocol('WM_DELETE_WINDOW', root.iconify)
     hotkeys.start()
-    webbrowser.open(url)
     tick()
     poll()
     try:
         root.mainloop()
     finally:
         hotkeys.stop()
+        editor.close()

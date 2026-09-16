@@ -250,9 +250,18 @@ $('cycle-enabled').onchange=async()=>{
  else{try{showRuntime(await api('setups/disable',{}));message('Cycling stopped. The keypad retains its last bindings.');}catch(e){$('cycle-enabled').checked=!!runtime?.enabled;message(e.message,true);}}
 };
 $('background').onclick=async()=>{
- try{await flushSave();if(window.webkit?.messageHandlers?.desktop)window.webkit.messageHandlers.desktop.postMessage('hide');else message('You can close this tab. Keep the Dialpad companion running.');}catch(e){message('Changes could not be saved. Correct the setup before closing.',true);}
+ try{await flushSave();if(window.webkit?.messageHandlers?.desktop)window.webkit.messageHandlers.desktop.postMessage('hide');else if(window.chrome?.webview)window.chrome.webview.postMessage('hide');else message('You can close this tab. Keep the Dialpad companion running.');}catch(e){message('Changes could not be saved. Correct the setup before closing.',true);}
 };
 window.addEventListener('beforeunload',event=>{if(initialized&&dirty()){event.preventDefault();event.returnValue='';}});
 $('platform').value=/Mac/.test(navigator.platform)?'mac':'windows';
 async function start(){try{const response=await fetch('/starters.json');if(!response.ok)throw new Error('Could not load bundled layouts.');starterLayouts=await response.json();preset();await refreshRuntime();refresh();setInterval(refreshRuntime,1000);setInterval(refresh,4000);}catch(e){message(e.message,true);}}
 start();
+
+$('copy-agent-prompt').onclick=async()=>{
+ try{await navigator.clipboard.writeText($('agent-prompt').value);message('Agent instruction copied. Add your requested changes before sending.');}
+ catch(e){$('agent-prompt').focus();$('agent-prompt').select();message('Select and copy the instruction above.');}
+};
+$('show-agent-guide').onclick=async()=>{
+ try{const guide=$('agent-guide');guide.textContent=(await api('agent')).guide;guide.hidden=!guide.hidden;}
+ catch(e){message(e.message,true);}
+};

@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import sys
-import time
 
 _UNSET = object()
 
@@ -25,7 +24,6 @@ class Setups:
         self.device_id = None
         self.cycle_profiles = []
         self.generation = 0
-        self.last_switch = 0
         self.error = ''
         self.load_failed = False
         self.show_request = 0
@@ -235,17 +233,15 @@ class Setups:
         self.active = 0
         self.enabled = True
         self.error = ''
-        self.last_switch = time.monotonic()
         self.persist_runtime()
         self.generation += 1
 
     def cycle(self, write, packets):
         if not self.enabled or not self.ready:
             raise ValueError('Setup cycling is off. Enable it from the app first.')
-        if len(self.cycle_profiles) == 1 or time.monotonic() - self.last_switch < 1.2:
+        if len(self.cycle_profiles) == 1:
             return self.state()
         index = (self.active + 1) % len(self.cycle_profiles)
-        self.last_switch = time.monotonic()
         try:
             # A crash during transfer must not restore a possibly partial layout.
             self.path.with_name('active-cycle.json').unlink(missing_ok=True)

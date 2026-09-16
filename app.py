@@ -106,6 +106,19 @@ class Handler(BaseHTTPRequestHandler):
             with WRITE_LOCK:
                 self.reply(200, SETUPS.state())
             return
+        if self.path == '/api/desktop-window' and sys.platform == 'win32':
+            from core.windows_window import window_status
+            self.reply(200, window_status())
+            return
+        if self.path == '/api/agent':
+            from core.protocol import KEY_CODES, MODIFIERS, MEDIA_CODES, MOUSE_ACTIONS, MULTI_TAP_KEYS
+            self.reply(200, {'api_version': 1,
+                'guide': (ROOT / 'ui' / 'AGENT-GUIDE.md').read_text(encoding='utf-8'),
+                'controls': CONTROLS, 'keys': sorted(KEY_CODES), 'modifiers': list(MODIFIERS),
+                'media': list(MEDIA_CODES), 'mouse': list(MOUSE_ACTIONS),
+                'multi_tap_keys': sorted(MULTI_TAP_KEYS), 'max_setups': 8,
+                'platform': sys.platform})
+            return
         if self.path == '/api/devices':
             try:
                 from core.transport import list_devices
@@ -113,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.reply(503, {'error': str(exc)})
             return
-        assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/starters.json': ('starters.json', 'application/json; charset=utf-8'), '/icon.svg': ('icon.svg', 'image/svg+xml')}
+        assets = {'/AGENT-GUIDE.md': ('AGENT-GUIDE.md', 'text/plain; charset=utf-8'), '/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/starters.json': ('starters.json', 'application/json; charset=utf-8'), '/icon.svg': ('icon.svg', 'image/svg+xml')}
         if self.path not in assets:
             self.reply(404, {'error': 'Not found.'})
             return
@@ -303,7 +316,7 @@ def main():
             threading.Thread(target=watch_desktop, daemon=True).start()
         elif sys.platform == 'win32':
             from core.windows_desktop import launch
-            threading.Thread(target=launch, args=(url, server.shutdown), daemon=True).start()
+            threading.Thread(target=launch, args=(url, server.shutdown, SETUPS.path.parent), daemon=True).start()
         else:
             webbrowser.open(url)
     try:
@@ -313,6 +326,9 @@ def main():
     finally:
         if desktop and desktop.poll() is None:
             desktop.terminate()
+        if sys.platform == 'win32' and not args.no_browser:
+            from core.windows_window import stop
+            stop()
         server.server_close()
         if instance_lock is not None:
             session_path.unlink(missing_ok=True)

@@ -32,6 +32,14 @@ try:
         expect(page.locator('#key-editor')).to_be_hidden()
         expect(page.locator('#cycling-panel')).to_be_visible()
 
+        page.locator('#agent-help > summary').click()
+        expect(page.locator('#agent-prompt')).to_have_value(__import__('re').compile('.*api/agent.*'))
+        page.locator('#show-agent-guide').click()
+        expect(page.locator('#agent-guide')).to_contain_text('expected_profile')
+        page.locator('#show-agent-guide').click()
+        expect(page.locator('#agent-guide')).to_be_hidden()
+        page.locator('#agent-help > summary').click()
+
         def state():
             return page.evaluate("api('setups')")
         def saved():

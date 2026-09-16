@@ -19,6 +19,14 @@ class RuntimeTests(unittest.TestCase):
         self.setups.save([a,b])
         self.setups.ready = True
 
+    def test_rapid_presses_each_advance_without_cooldown(self):
+        self.setups.activate(self.setups.snapshot(), 'mock')
+        writer = Mock()
+        for index in range(15):
+            state = self.setups.cycle(writer, profile_packets)
+            self.assertEqual(state['active'], (index + 1) % 2)
+        self.assertEqual(writer.call_count, 15)
+
     def test_order_separate_from_library_and_persistent(self):
         self.setups.save_order(['B','A'])
         self.assertEqual([p['name'] for p in self.setups.snapshot()], ['B','A'])
@@ -33,7 +41,6 @@ class RuntimeTests(unittest.TestCase):
     def test_restart_restores_reviewed_snapshot_without_writes(self):
         self.setups.activate(self.setups.snapshot(), 'mock')
         writer=Mock(side_effect=lambda *_: self.assertFalse(self.path.with_name('active-cycle.json').exists()))
-        self.setups.last_switch=0
         self.setups.cycle(writer,profile_packets)
         loaded=Setups(validate_profile,self.path)
         self.assertFalse(loaded.enabled)
@@ -49,7 +56,6 @@ class RuntimeTests(unittest.TestCase):
 
     def test_failure_clears_restart_marker(self):
         self.setups.activate(self.setups.snapshot(),'mock')
-        self.setups.last_switch=0
         with self.assertRaises(OSError):
             self.setups.cycle(Mock(side_effect=OSError('unplugged')),profile_packets)
         loaded=Setups(validate_profile,self.path)
@@ -58,7 +64,6 @@ class RuntimeTests(unittest.TestCase):
 
     def test_single_template_press_does_not_rewrite(self):
         self.setups.activate(self.setups.snapshot(['A']),'mock')
-        self.setups.last_switch=0
         writer=Mock()
         self.setups.cycle(writer,profile_packets)
         writer.assert_not_called()

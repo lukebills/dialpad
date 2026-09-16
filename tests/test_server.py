@@ -60,6 +60,20 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return response
 
+    def test_agent_discovery_and_documented_profile_are_valid_without_writes(self):
+        status, capability = self.request('/api/agent')
+        self.assertEqual(status, 200)
+        self.assertEqual(capability['api_version'], 1)
+        self.assertEqual(capability['controls'], app.CONTROLS)
+        self.assertIn('multi_tap_keys', capability)
+        example = json.loads(capability['guide'].split('```json\n', 1)[1].split('```', 1)[0])
+        self.assertEqual(self.request('/api/validate', {'profile': example})[0], 200)
+        self.assertEqual(self.request('/api/setups/upsert', {'profile': example, 'previous_name': None})[0], 200)
+        self.assertEqual(self.request('/api/setups/order', {'names': [example['name']]})[0], 200)
+        self.assertEqual(self.request('/api/agent', headers={'Authorization': ''})[0], 401)
+        self.assertNotIn(app.TOKEN, capability['guide'])
+        self.write.assert_not_called()
+
     def test_discovery_never_programs(self):
         self.assertEqual(self.request('/api/devices')[0], 200)
         self.devices.assert_called_once()
@@ -163,19 +177,15 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request('/api/setups/cycle', {})[0], 400)
         self.write.assert_not_called()
 
-    def test_cycle_applies_snapshot_debounces_and_wraps(self):
+    def test_cycle_applies_snapshot_immediately_and_wraps(self):
         preview = self.prepare_cycle()
         self.assertEqual(self.request('/api/apply', {'nonce': preview['nonce']})[0], 200)
         app.SETUPS.profiles[1]['bindings']['key1']['key'] = 'TAB'
-        self.assertEqual(self.request('/api/setups/cycle', {})[0], 200)
-        self.assertEqual(self.write.call_count, 1)  # rapid press ignored
-        app.SETUPS.last_switch = 0
         status, state = self.request('/api/setups/cycle', {})
         self.assertEqual(status, 200)
         self.assertEqual(state['current']['bindings']['key1']['key'], 'ESCAPE')
         self.assertEqual(state['active'], 1)
         self.assertEqual(self.write.call_args.args[1], app.profile_packets(state['current']))
-        app.SETUPS.last_switch = 0
         self.assertEqual(self.request('/api/setups/cycle', {})[1]['active'], 0)
         self.assertEqual(self.write.call_count, 3)
 
@@ -183,7 +193,6 @@ class ServerTests(unittest.TestCase):
         preview = self.prepare_cycle()
         self.request('/api/apply', {'nonce': preview['nonce']})
         self.write.side_effect = TransportError('partial write', 2)
-        app.SETUPS.last_switch = 0
         self.assertEqual(self.request('/api/setups/cycle', {})[0], 503)
         state = self.request('/api/setups')[1]
         self.assertFalse(state['enabled'])
@@ -223,7 +232,6 @@ class ServerTests(unittest.TestCase):
     def test_busy_cycle_does_not_queue_another_transfer(self):
         preview = self.prepare_cycle()
         self.request('/api/apply', {'nonce': preview['nonce']})
-        app.SETUPS.last_switch = 0
         with app.WRITE_LOCK:
             self.assertEqual(self.request('/api/setups/cycle', {})[0], 400)
         self.assertEqual(self.write.call_count, 1)

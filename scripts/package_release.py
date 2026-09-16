@@ -13,6 +13,7 @@ assets = dist / 'release'
 assets.mkdir(exist_ok=True)
 arch = {'AMD64': 'x64', 'x86_64': 'x64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(platform.machine(), platform.machine())
 if sys.platform == 'win32':
+    shutil.copy2(ROOT / 'scripts' / 'Update-Dialpad.ps1', assets)
     name = f'Dialpad-{version}-windows-{arch}'
     if not (dist / 'Dialpad' / 'Dialpad.exe').is_file():
         raise SystemExit('Build the Windows app first.')

@@ -65,6 +65,9 @@ if sys.platform == 'darwin':
 elif sys.platform != 'win32':
     raise SystemExit('Build on macOS or Windows to create a portable app for that OS.')
 else:
+    from scripts.build_windows_window import build as build_windows_window
+    window_files = build_windows_window()
+    args += ['--add-data', f'{window_files}:windows']
     version_file = ROOT / 'build' / 'windows-version.txt'
     version_file.parent.mkdir(parents=True, exist_ok=True)
     numbers = tuple(map(int, release_version.split('.'))) + (0,)
