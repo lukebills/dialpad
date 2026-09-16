@@ -47,8 +47,8 @@ def profile_packets(profile):
 def make_preview(body):
     from core.protocol import encode_binding
     profile = validate_profile(body.get('profile'))
-    if any(a.get('type') == 'copy_paste' for a in profile['bindings'].values()) and not body.get('_cycle'):
-        raise ValueError('Save this template and enable it in the dial cycle to use Copy / Paste.')
+    if any(a.get('type') in ('copy_paste', 'multi_tap') for a in profile['bindings'].values()) and not body.get('_cycle'):
+        raise ValueError('Save this template and enable it in the dial cycle to use Copy / Paste or multi-tap buttons.')
     controls = body.get('controls')
     if not isinstance(controls, list) or not controls or any(c not in CONTROLS for c in controls) or len(set(controls)) != len(controls):
         raise ValueError('Select at least one distinct control to apply.')

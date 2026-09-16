@@ -5,6 +5,7 @@ import json
 import queue
 import time
 from core.clipboard_gesture import ClipboardGesture
+from core.multi_tap import MultiTapGesture
 import threading
 import tkinter as tk
 import urllib.request
@@ -19,7 +20,7 @@ def launch(url, shutdown):
     root.title('Dialpad · live layout')
     root.geometry('380x400')
     root.configure(bg='#f5f4ef')
-    root.attributes('-topmost', True)
+    root.iconify()  # Keep the companion in the taskbar; no floating live-layout popup.
     text = tk.StringVar(value='Connecting…')
     tk.Label(root, textvariable=text, bg='#f5f4ef', fg='#293e2f', justify='left',
              wraplength=345, padx=18, pady=18).pack(fill='both', expand=True)
@@ -39,13 +40,14 @@ def launch(url, shutdown):
 
     def cycle():
         if state['enabled'] and not state['pending']:
+            reset_multi()
             state['pending'] = True
             request('setups/cycle', {}, 'cycle')
 
     def close():
         state['closed'] = True
-        user32.UnregisterHotKey(None, 1)
-        user32.UnregisterHotKey(None, 2)
+        for hotkey_id in range(1, 9):
+            user32.UnregisterHotKey(None, hotkey_id)
         root.destroy()
         shutdown()
 
@@ -126,7 +128,84 @@ def launch(url, shutdown):
         else:
             clipboard['timer'] = root.after(320, lambda: perform_clipboard(gesture.flush(), action, focus))
 
+    multi = {f'key{i}': {'gesture': MultiTapGesture(), 'timer': None, 'focus': None, 'binding': None} for i in range(1, 7)}
+
+    def reset_multi():
+        for item in multi.values():
+            if item['timer'] is not None:
+                root.after_cancel(item['timer'])
+            item.update(timer=None, focus=None)
+            item['gesture'].reset()
+
+    def emit_multi(action, focus, context):
+        if (not state['enabled'] or state['pending'] or context != clipboard['context'] or
+                not focus or focus != user32.GetForegroundWindow()):
+            return
+        kind = action['type']
+        if kind == 'clipboard':
+            if not clipboard['busy']:
+                reset_clipboard()
+                perform_clipboard(action['action'], action, focus)
+            return
+        modifiers = {'ctrl': 0x11, 'shift': 0x10, 'alt': 0x12, 'cmd': 0x5B}
+        held = [modifiers[m] for m in action.get('modifiers', [])]
+        for modifier in held:
+            user32.keybd_event(modifier, 0, 0, 0)
+        try:
+            if kind == 'shortcut':
+                name = action['key'].upper()
+                named = dict(zip('ENTER ESCAPE TAB SPACE BACKSPACE DELETE UP DOWN LEFT RIGHT HOME END PAGEUP PAGEDOWN CAPSLOCK'.split(),
+                                 (0x0D, 0x1B, 0x09, 0x20, 0x08, 0x2E, 0x26, 0x28, 0x25, 0x27, 0x24, 0x23, 0x21, 0x22, 0x14)))
+                named.update(dict(zip('MINUS EQUAL LEFTBRACKET RIGHTBRACKET BACKSLASH SEMICOLON QUOTE GRAVE COMMA DOT SLASH'.split(),
+                                      (0xBD, 0xBB, 0xDB, 0xDD, 0xDC, 0xBA, 0xDE, 0xC0, 0xBC, 0xBE, 0xBF))))
+                named.update({f'F{i}': 0x6F+i for i in range(1, 13)})
+                if name != 'NONE':
+                    key = ord(name) if len(name) == 1 else named[name]
+                    extended = 1 if name in ('DELETE', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'HOME', 'END', 'PAGEUP', 'PAGEDOWN') else 0
+                    user32.keybd_event(key, 0, extended, 0)
+                    user32.keybd_event(key, 0, extended | 2, 0)
+            elif kind == 'media':
+                key = {'volume_up': 0xAF, 'volume_down': 0xAE, 'mute': 0xAD, 'play_pause': 0xB3, 'next': 0xB0, 'previous': 0xB1}[action['action'].lower()]
+                user32.keybd_event(key, 0, 0, 0)
+                user32.keybd_event(key, 0, 2, 0)
+            elif kind == 'mouse':
+                name = action['action'].lower()
+                if name.startswith('wheel_'):
+                    user32.mouse_event(0x0800, 0, 0, 120 if name == 'wheel_up' else -120, 0)
+                else:
+                    down, up = {'left_click': (2, 4), 'right_click': (8, 16), 'middle_click': (32, 64)}[name]
+                    user32.mouse_event(down, 0, 0, 0, 0)
+                    user32.mouse_event(up, 0, 0, 0, 0)
+        finally:
+            for modifier in reversed(held):
+                user32.keybd_event(modifier, 0, 2, 0)
+
+    def multi_tap(control):
+        item = multi[control]
+        binding = item['binding']
+        if not state['enabled'] or state['pending'] or not binding:
+            return
+        focus = user32.GetForegroundWindow()
+        if item['timer'] is not None:
+            root.after_cancel(item['timer'])
+            item['timer'] = None
+        if item['focus'] != focus:
+            item['gesture'].reset()
+        item['focus'] = focus
+        context = clipboard['context']
+        for name in item['gesture'].tap(time.monotonic(), binding.get('window_ms', 350)):
+            emit_multi(binding[name], focus, context)
+        if item['gesture'].count:
+            def flush():
+                item['timer'] = None
+                name = item['gesture'].flush()
+                if name:
+                    emit_multi(binding[name], focus, context)
+            item['timer'] = root.after(binding.get('window_ms', 350), flush)
+
     def describe(action):
+        if action.get('type') == 'multi_tap':
+            return ' / '.join(describe(action[name]) for name in ('single', 'double', 'triple'))
         if action.get('type') == 'copy_paste':
             return 'Copy / Paste'
         if action.get('type') == 'shortcut':
@@ -135,16 +214,26 @@ def launch(url, shutdown):
 
     def update(data):
         state['enabled'] = data['enabled']
+        if not state['enabled']:
+            reset_multi()
+            reset_clipboard()
         next_button.configure(state='normal' if data['enabled'] else 'disabled')
         current = data.get('current')
         if current:
             context = (current['name'], data['generation'])
             if clipboard['context'] != context:
                 reset_clipboard()
+                reset_multi()
                 clipboard['context'] = context
             clipboard['binding'] = next((a for a in current['bindings'].values() if a.get('type') == 'copy_paste'), None)
+            for control, item in multi.items():
+                binding = current['bindings'].get(control)
+                item['binding'] = binding if binding and binding.get('type') == 'multi_tap' else None
         else:
             reset_clipboard()
+            reset_multi()
+            for item in multi.values():
+                item['binding'] = None
             clipboard['binding'] = None
             clipboard['context'] = None
         if current:
@@ -153,10 +242,6 @@ def launch(url, shutdown):
             text.set(current['name'] + '\n\n' + '\n\n'.join(rows) + '\n\nTurn: ' +
                      describe(current['bindings']['dial_ccw']) + ' / ' + describe(current['bindings']['dial_cw']) + '\nPress dial → Next setup')
             root.title('Dialpad · ' + current['name'])
-            if data['generation'] != state['generation']:
-                # A brief visual notification without taking focus from the coding app.
-                root.configure(bg='#dfecc9')
-                root.after(2500, lambda: root.configure(bg='#f5f4ef'))
         else:
             root.title('Dialpad · cycling off')
             text.set(data.get('error') or 'Cycling is off.\n\nSave two setups and enable cycling in the editor.\n\nThe keypad keeps its last bindings. Apply a normal layout to restore the dial press.')
@@ -170,6 +255,8 @@ def launch(url, shutdown):
                 cycle()
             elif msg.wParam == 2:
                 alternate_clipboard()
+            elif 3 <= msg.wParam <= 8:
+                multi_tap(f'key{msg.wParam-2}')
         while not results.empty():
             kind, data, error = results.get_nowait()
             if kind == 'cycle':
@@ -182,6 +269,7 @@ def launch(url, shutdown):
                 text.set('Connection or transfer failed.\n' + error)
                 state['enabled'] = False
                 reset_clipboard()
+                reset_multi()
                 clipboard['context'] = None
                 next_button.configure(state='disabled')
         root.after(50, tick)
@@ -199,7 +287,8 @@ def launch(url, shutdown):
     root.protocol('WM_DELETE_WINDOW', root.iconify)
     ready = bool(user32.RegisterHotKey(None, 1, 0x4000, 0x81))  # MOD_NOREPEAT, VK_F18
     copy_ready = bool(user32.RegisterHotKey(None, 2, 0x4000, 0x82))
-    request('desktop-ready', {'ready': ready and copy_ready, 'error': 'F18 is in use. Close another Dialpad instance or app using F18 and reopen.'}, 'ready')
+    multi_ready = [bool(user32.RegisterHotKey(None, i+3, 0x4000, key)) for i, key in enumerate((0x7C, 0x7D, 0x7E, 0x7F, 0x80, 0x83))]
+    request('desktop-ready', {'ready': ready and copy_ready and all(multi_ready), 'error': 'A reserved F13–F20 shortcut is in use. Close another Dialpad instance or app using these keys and reopen.'}, 'ready')
     webbrowser.open(url)
     tick()
     poll()

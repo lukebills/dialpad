@@ -3,6 +3,8 @@ import WebKit
 import Carbon
 import ApplicationServices
 
+let tapKeyCodes: [String: CGKeyCode] = ["A": 0, "S": 1, "D": 2, "F": 3, "H": 4, "G": 5, "Z": 6, "X": 7, "C": 8, "V": 9, "B": 11, "Q": 12, "W": 13, "E": 14, "R": 15, "Y": 16, "T": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "EQUAL": 24, "9": 25, "7": 26, "MINUS": 27, "8": 28, "0": 29, "RIGHTBRACKET": 30, "O": 31, "U": 32, "LEFTBRACKET": 33, "I": 34, "P": 35, "ENTER": 36, "L": 37, "J": 38, "QUOTE": 39, "K": 40, "SEMICOLON": 41, "BACKSLASH": 42, "COMMA": 43, "SLASH": 44, "N": 45, "M": 46, "DOT": 47, "TAB": 48, "SPACE": 49, "GRAVE": 50, "BACKSPACE": 51, "ESCAPE": 53, "CAPSLOCK": 57, "F1": 122, "F2": 120, "F3": 99, "F4": 118, "F5": 96, "F6": 97, "F7": 98, "F8": 100, "F9": 101, "F10": 109, "F11": 103, "F12": 111, "HOME": 115, "PAGEUP": 116, "DELETE": 117, "END": 119, "PAGEDOWN": 121, "LEFT": 123, "RIGHT": 124, "DOWN": 125, "UP": 126]
+
 // Pure gesture state, exercised by --clipboard-state-test without OS input.
 struct ClipboardGesture {
     var copyNext = true
@@ -28,7 +30,7 @@ struct ClipboardGesture {
     return board.setString(text, forType: .string)
 }
 
-// One scalable diagram is shared by the menu-bar preview and floating window.
+// Visual layout in the menu bar.
 final class KeypadPreview: NSView {
     var profile: [String: Any]?
     var title = "Cycling off"
@@ -64,6 +66,12 @@ final class KeypadPreview: NSView {
     func action(_ control: String) -> String {
         let bindings = profile?["bindings"] as? [String: [String: Any]] ?? [:]
         let binding = bindings[control] ?? [:]
+        if binding["type"] as? String == "multi_tap" {
+            return ["single", "double", "triple"].enumerated().map { index, name in
+                let leaf = binding[name] as? [String: Any] ?? [:]
+                return "\(index + 1)× " + (leaf["action"] as? String ?? leaf["key"] as? String ?? "")
+            }.joined(separator: " · ")
+        }
         if binding["type"] as? String == "copy_paste" { return "Copy ⇄ Paste" }
         if binding["type"] as? String == "shortcut" {
             let symbols = ["ctrl":"⌃", "alt":"⌥", "cmd":"⌘", "shift":"⇧"]
@@ -112,11 +120,15 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     var window: NSWindow!
     var web: WKWebView!
     var status: NSStatusItem!
-    var panel: NSPanel!
-    var panelPreview: KeypadPreview!
     var menuPreview: KeypadPreview!
     var currentProfile: [String: Any]?
     var menuFingerprint = ""
+    var testTapActions: [[String: Any]]?
+    var tapHotKeys: [EventHotKeyRef] = []
+    var tapCounts: [Int: Int] = [:]
+    var tapTimes: [Int: TimeInterval] = [:]
+    var tapTasks: [Int: DispatchWorkItem] = [:]
+    var tapFocus: [Int: pid_t] = [:]
     var copyHotKey: EventHotKeyRef?
     var clipboardGesture = ClipboardGesture()
     var clipboardTimer: DispatchWorkItem?
@@ -181,15 +193,16 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         web.uiDelegate = self
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1160, height: 830), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Dialpad"
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(calibratedRed: 245/255, green: 244/255, blue: 239/255, alpha: 1)
+        window.appearance = NSAppearance(named: .aqua)
+        web.underPageBackgroundColor = window.backgroundColor
         window.minSize = NSSize(width: 440, height: 560)
         window.isReleasedWhenClosed = false
         window.contentView = web
         window.center()
         web.load(URLRequest(url: url))
         showEditor()
-        (panel, panelPreview) = makePanel(width: 440, height: 280)
-        panel.isMovableByWindowBackground = true
-        if UserDefaults.standard.bool(forKey: "floatingLayout") { panel.orderFrontRegardless() }
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menuIcon = NSImage(size: NSSize(width: 24, height: 18), flipped: false) { _ in
             NSColor.black.setFill()
@@ -219,33 +232,24 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
                 guard host.heldHotKeys.insert(id).inserted else { return }
                 if id == 1 && host.enabled { host.nextSetup() }
                 if id == 2 && host.enabled { host.alternateClipboard() }
+                if (3...8).contains(id) && host.enabled { host.multiTap(Int(id) - 2) }
             }
             return noErr
         }, 2, &events, pointer, &handler)
         let registered = installed == noErr ? RegisterEventHotKey(UInt32(kVK_F18), 0, EventHotKeyID(signature: 0x4449414C, id: 1), GetApplicationEventTarget(), 0, &hotKey) : installed
         let copyRegistered = installed == noErr ? RegisterEventHotKey(UInt32(kVK_F19), 0, EventHotKeyID(signature: 0x4449414C, id: 2), GetApplicationEventTarget(), 0, &copyHotKey) : installed
-        hotKeyReady = registered == noErr && copyRegistered == noErr
-        request("desktop-ready", body: ["ready": hotKeyReady, "error": "F18 or F19 is unavailable. Close another Dialpad instance or app using F18, then reopen."]) { state, error in
+        var tapsReady = true
+        for (index, code) in [kVK_F13, kVK_F14, kVK_F15, kVK_F16, kVK_F17, kVK_F20].enumerated() {
+            var ref: EventHotKeyRef?
+            let result = installed == noErr ? RegisterEventHotKey(UInt32(code), 0, EventHotKeyID(signature: 0x4449414C, id: UInt32(index + 3)), GetApplicationEventTarget(), 0, &ref) : installed
+            if result != noErr { tapsReady = false }
+            if let ref = ref { tapHotKeys.append(ref) }
+        }
+        hotKeyReady = registered == noErr && copyRegistered == noErr && tapsReady
+        request("desktop-ready", body: ["ready": hotKeyReady, "error": "A Dialpad trigger (F13–F20) is unavailable. Close another app using these keys, then reopen."]) { state, error in
             if let state = state { self.update(state) }
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in self.poll() }
-    }
-
-    func makePanel(width: CGFloat, height: CGFloat) -> (NSPanel, KeypadPreview) {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.nonactivatingPanel, .titled, .closable], backing: .buffered, defer: false)
-        panel.title = "Dialpad · live layout"
-        panel.level = .floating
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.backgroundColor = NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.93, alpha: 1)
-        let preview = KeypadPreview(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        preview.autoresizingMask = [.width, .height]
-        panel.contentView = preview
-        if let screen = NSScreen.main?.visibleFrame {
-            panel.setFrameTopLeftPoint(NSPoint(x: screen.maxX - width - 24, y: screen.maxY - 35))
-        }
-        return (panel, preview)
     }
 
     func poll() {
@@ -266,6 +270,9 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     }
 
     func describe(_ action: [String: Any]) -> String {
+        if action["type"] as? String == "multi_tap" {
+            return ["single", "double", "triple"].enumerated().map { "\($0.offset + 1)× " + describe(action[$0.element] as? [String: Any] ?? [:]) }.joined(separator: " · ")
+        }
         if action["type"] as? String == "copy_paste" { return "Copy ⇄ Paste" }
         if action["type"] as? String == "shortcut" {
             let symbols = ["ctrl": "⌃", "alt": "⌥", "cmd": "⌘", "shift": "⇧"]
@@ -308,7 +315,6 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     func refreshMenu() {
         status.button?.title = " " + String(currentName.prefix(24))
         status.button?.toolTip = currentName + " · Click to view the keypad"
-        panelPreview.configure(profile: currentProfile, title: currentName, detail: summary)
         menuPreview?.configure(profile: currentProfile, title: currentName, detail: summary)
         let fingerprint = currentName + summary + String(enabled)
         if fingerprint == menuFingerprint { return }
@@ -322,8 +328,6 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         menu.addItem(.separator())
         let next = menu.addItem(withTitle: "Next setup", action: #selector(nextSetup), keyEquivalent: "")
         next.target = self; next.isEnabled = enabled
-        let floating = menu.addItem(withTitle: "Show / hide floating layout", action: #selector(togglePanel), keyEquivalent: "")
-        floating.target = self
         menu.addItem(withTitle: "Open editor", action: #selector(showEditor), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit Dialpad", action: #selector(quit), keyEquivalent: "").target = self
         menu.autoenablesItems = false
@@ -332,6 +336,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
 
     @objc func nextSetup() {
         guard enabled && !cycling else { return }
+        resetClipboard()
         cycling = true
         request("setups/cycle", body: [:]) { state, error in
             self.cycling = false
@@ -350,8 +355,108 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         window.orderOut(nil)
     }
     func resetClipboard() {
+        for task in tapTasks.values { task.cancel() }
+        tapTasks.removeAll(); tapCounts.removeAll(); tapTimes.removeAll(); tapFocus.removeAll()
         clipboardTimer?.cancel(); clipboardTimer = nil
         clipboardGesture = ClipboardGesture(); clipboardFocus = nil; clipboardBusy = false
+    }
+    func multiTap(_ key: Int) {
+        guard enabled, !cycling, !clipboardBusy,
+              let bindings = currentProfile?["bindings"] as? [String: [String: Any]],
+              let action = bindings["key\(key)"], action["type"] as? String == "multi_tap",
+              let focus = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        let prompt = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        guard testTapActions != nil || AXIsProcessTrustedWithOptions(prompt) else {
+            currentName = "Allow Accessibility"
+            summary = "Allow Dialpad in System Settings → Privacy & Security → Accessibility, then try the key again."
+            refreshMenu(); return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        let delay = Double(action["window_ms"] as? Int ?? 350) / 1000
+        if tapFocus[key] != focus { cancelTap(key) }
+        if let last = tapTimes[key], now - last > delay { finishTap(key, action: action) }
+        tapTasks[key]?.cancel()
+        tapFocus[key] = focus
+        tapCounts[key] = (tapCounts[key] ?? 0) + 1
+        tapTimes[key] = now
+        if tapCounts[key] == 3 { finishTap(key, action: action); return }
+        let context = clipboardContext
+        let task = DispatchWorkItem { [weak self] in
+            guard let self = self, self.clipboardContext == context else { return }
+            self.finishTap(key, action: action)
+        }
+        tapTasks[key] = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: task)
+    }
+    func cancelTap(_ key: Int) {
+        tapTasks.removeValue(forKey: key)?.cancel()
+        tapCounts.removeValue(forKey: key); tapTimes.removeValue(forKey: key); tapFocus.removeValue(forKey: key)
+    }
+    func finishTap(_ key: Int, action: [String: Any]) {
+        let count = tapCounts[key] ?? 0, focus = tapFocus[key]
+        cancelTap(key)
+        guard enabled, !cycling, (1...3).contains(count), focus != nil,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == focus,
+              let leaf = action[["single", "double", "triple"][count - 1]] as? [String: Any] else { return }
+        if testTapActions != nil { testTapActions?.append(leaf); return }
+        if leaf["type"] as? String == "clipboard" {
+            performClipboard(leaf["action"] as? String ?? "copy", action: leaf, focus: focus)
+        } else { emitAction(leaf) }
+    }
+    func emitAction(_ action: [String: Any]) {
+        var flags = CGEventFlags()
+        for modifier in action["modifiers"] as? [String] ?? [] {
+            switch modifier {
+            case "cmd": flags.insert(.maskCommand)
+            case "ctrl": flags.insert(.maskControl)
+            case "alt": flags.insert(.maskAlternate)
+            case "shift": flags.insert(.maskShift)
+            default: break
+            }
+        }
+        if action["type"] as? String == "shortcut" {
+            let key = (action["key"] as? String ?? "").uppercased()
+            if key == "NONE" {
+                let modifiers: [(CGEventFlags, Int)] = [(.maskControl,kVK_Control),(.maskShift,kVK_Shift),(.maskAlternate,kVK_Option),(.maskCommand,kVK_Command)]
+                var active = CGEventFlags()
+                for (flag, code) in modifiers where flags.contains(flag) {
+                    active.insert(flag)
+                    let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(code), keyDown: true)
+                    event?.type = .flagsChanged; event?.flags = active; event?.post(tap: .cghidEventTap)
+                }
+                for (flag, code) in modifiers.reversed() where flags.contains(flag) {
+                    active.remove(flag)
+                    let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(code), keyDown: false)
+                    event?.type = .flagsChanged; event?.flags = active; event?.post(tap: .cghidEventTap)
+                }
+                return
+            }
+            guard let code = tapKeyCodes[key] else { return }
+            for down in [true, false] {
+                let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
+                event?.flags = flags; event?.post(tap: .cghidEventTap)
+            }
+        } else if action["type"] as? String == "mouse" {
+            let name = (action["action"] as? String ?? "").lowercased()
+            if name.hasPrefix("wheel_") {
+                let event = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: name == "wheel_up" ? 1 : -1, wheel2: 0, wheel3: 0)
+                event?.flags = flags; event?.post(tap: .cghidEventTap)
+            } else {
+                let button: CGMouseButton = name == "right_click" ? .right : name == "middle_click" ? .center : .left
+                let types: [CGEventType] = button == .right ? [.rightMouseDown,.rightMouseUp] : button == .center ? [.otherMouseDown,.otherMouseUp] : [.leftMouseDown,.leftMouseUp]
+                let location = CGEvent(source: nil)?.location ?? .zero
+                for type in types {
+                    let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: location, mouseButton: button)
+                    event?.flags = flags; event?.post(tap: .cghidEventTap)
+                }
+            }
+        } else if action["type"] as? String == "media" {
+            let codes = ["volume_up":0,"volume_down":1,"mute":7,"play_pause":16,"next":17,"previous":18]
+            guard let code = codes[(action["action"] as? String ?? "").lowercased()] else { return }
+            for state in [0xa, 0xb] {
+                NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, subtype: 8, data1: (code << 16) | (state << 8), data2: -1)?.cgEvent?.post(tap: .cghidEventTap)
+            }
+        }
     }
     func alternateClipboard() {
         guard !clipboardBusy, !cycling,
@@ -426,14 +531,11 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         }
     }
     @objc func showEditor() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
-    @objc func togglePanel() {
-        if panel.isVisible { panel.orderOut(nil) } else { panel.orderFrontRegardless() }
-        UserDefaults.standard.set(panel.isVisible, forKey: "floatingLayout")
-    }
     @objc func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showEditor(); return true }
     func applicationWillTerminate(_ notification: Notification) {
+        for ref in tapHotKeys { UnregisterEventHotKey(ref) }
         if let copyHotKey = copyHotKey { UnregisterEventHotKey(copyHotKey) }
         if let hotKey = hotKey { UnregisterEventHotKey(hotKey) }
         if let handler = handler { RemoveEventHandler(handler) }
@@ -467,6 +569,8 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         status["background"] = !self.window.isVisible
                         status["hotkeys"] = self.hotKeyReady
+                        status["floating"] = NSApp.windows.contains { $0 is NSPanel && $0.isVisible }
+                        status["titlebar"] = self.window.titlebarAppearsTransparent
                         self.showEditor()
                         status["reopened"] = self.window.isVisible
                         if let data = try? JSONSerialization.data(withJSONObject: status), let text = String(data: data, encoding: .utf8) { print(text) }
@@ -477,6 +581,40 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
         }
     }
+}
+
+if CommandLine.arguments.contains("--tap-runtime-test") {
+    _ = NSApplication.shared
+    let host = Desktop(url: URL(string: "http://127.0.0.1/#test")!)
+    host.enabled = true; host.testTapActions = []
+    let binding: [String: Any] = ["type":"multi_tap", "window_ms":350,
+        "single":["type":"clipboard","action":"copy"],
+        "double":["type":"clipboard","action":"paste"],
+        "triple":["type":"clipboard","action":"cut"]]
+    host.currentProfile = ["bindings":["key1":binding,"key2":binding]]
+    func wait(_ seconds: Double) { RunLoop.main.run(until: Date(timeIntervalSinceNow: seconds)) }
+    host.multiTap(1); wait(0.4)
+    precondition(host.testTapActions?.last?["action"] as? String == "copy")
+    host.testTapActions = []
+    host.multiTap(1); wait(0.1); host.multiTap(1)
+    precondition(host.testTapActions!.isEmpty)
+    wait(0.4)
+    precondition(host.testTapActions?.last?["action"] as? String == "paste")
+    host.testTapActions = []
+    host.multiTap(1); host.multiTap(1); host.multiTap(1)
+    precondition(host.testTapActions?.count == 1 && host.testTapActions?.last?["action"] as? String == "cut")
+    wait(0.4); precondition(host.testTapActions?.count == 1)
+    host.testTapActions = []
+    host.multiTap(1); host.multiTap(2); host.multiTap(2); wait(0.4)
+    precondition(host.testTapActions?.count == 2)
+    precondition(Set(host.testTapActions!.compactMap { $0["action"] as? String }) == Set(["copy","paste"]))
+    host.testTapActions = []
+    host.multiTap(1); host.resetClipboard(); wait(0.4)
+    precondition(host.testTapActions!.isEmpty)
+    host.multiTap(1); host.tapFocus[1] = -1; wait(0.4)
+    precondition(host.testTapActions!.isEmpty)
+    print("Native multi-tap runtime passed: single/double/triple, independent keys, cancellation and focus guard; no input emitted.")
+    exit(0)
 }
 
 if CommandLine.arguments.contains("--clipboard-format-test") {

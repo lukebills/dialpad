@@ -32,6 +32,10 @@ MEDIA_CODES = {"volume_up": 0xe9, "volume_down": 0xea, "mute": 0xe2,
                "stop": 0xb7, "brightness_up": 0x6f, "brightness_down": 0x70}
 MOUSE_ACTIONS = {"wheel_up": (0, 1), "wheel_down": (0, -1),
                  "left_click": (1, 0), "right_click": (2, 0), "middle_click": (4, 0)}
+MULTI_TAP_TRIGGERS = dict(zip((f'key{i}' for i in range(1, 7)), ('F13', 'F14', 'F15', 'F16', 'F17', 'F20')))
+RESERVED_TRIGGERS = set(MULTI_TAP_TRIGGERS.values()) | {'F18', 'F19'}
+MULTI_TAP_KEYS = (set('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') | {f'F{i}' for i in range(1, 13)} |
+                  set('NONE ENTER ESCAPE TAB SPACE BACKSPACE DELETE UP DOWN LEFT RIGHT HOME END PAGEUP PAGEDOWN MINUS EQUAL LEFTBRACKET RIGHTBRACKET BACKSLASH SEMICOLON QUOTE GRAVE COMMA DOT SLASH CAPSLOCK'.split()))
 
 
 def _packet(*values: int) -> bytes:
@@ -74,6 +78,35 @@ def encode_binding(control: str, action: dict, layer: int = 1) -> list[bytes]:
     if not isinstance(action, dict):
         raise ValueError("action must be an object")
     kind = action.get("type")
+    if kind == 'multi_tap':
+        _fields(action, {'type', 'window_ms', 'single', 'double', 'triple'})
+        if control not in MULTI_TAP_TRIGGERS:
+            raise ValueError('Multi-tap is available on the six keys only.')
+        window = action.get('window_ms', 350)
+        if type(window) is not int or not 100 <= window <= 1000:
+            raise ValueError('Tap timing must be an integer from 100 to 1000 milliseconds.')
+        for name in ('single', 'double', 'triple'):
+            leaf = action.get(name)
+            if not isinstance(leaf, dict) or leaf.get('type') not in ('shortcut', 'mouse', 'media', 'clipboard'):
+                raise ValueError('Each tap needs a shortcut, mouse, media or clipboard action.')
+            if leaf['type'] == 'clipboard':
+                _fields(leaf, {'type', 'action', 'formatting', 'modifiers'})
+                if leaf.get('action') not in ('copy', 'paste', 'cut'):
+                    raise ValueError('Clipboard action must be copy, paste or cut.')
+                if leaf.get('formatting', 'plain') not in ('plain', 'formatted'):
+                    raise ValueError('Choose plain text or original formatting.')
+                if leaf.get('modifiers', ['cmd']) not in (['cmd'], ['ctrl'], ['ctrl', 'shift']):
+                    raise ValueError('Clipboard actions use Command, Control, or Control + Shift.')
+            else:
+                encode_binding(control, leaf, layer)
+                if any(m not in ('ctrl', 'alt', 'shift', 'cmd') for m in leaf.get('modifiers', [])):
+                    raise ValueError('Multi-tap actions support Control, Option/Alt, Shift and Command.')
+                if leaf['type'] == 'shortcut':
+                    if leaf['key'].upper() not in MULTI_TAP_KEYS:
+                        raise ValueError('This key is unavailable for multi-tap shortcuts; function keys support F1–F12.')
+                if leaf['type'] == 'media' and leaf['action'].lower() not in ('volume_up', 'volume_down', 'mute', 'play_pause', 'next', 'previous'):
+                    raise ValueError('Multi-tap media supports volume, mute, play/pause, next and previous.')
+        return encode_binding(control, {'type': 'shortcut', 'key': MULTI_TAP_TRIGGERS[control], 'modifiers': []}, layer)
     if kind == "copy_paste":
         _fields(action, {"type", "modifiers", "formatting", "reset_seconds", "double_tap_cut"})
         if action.get('formatting', 'plain') not in ('plain', 'formatted'):

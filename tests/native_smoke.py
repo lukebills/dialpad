@@ -19,12 +19,13 @@ try:
     assert status['keys'] == 6, status
     assert status['ready'] is True, status
     assert status['background'] and status['reopened'] and status['hotkeys'], status
+    assert status['titlebar'] and not status['floating'], status
     assert status['connection'] == 'Keypad connected', status
     base, token = url.split('#', 1)
     with urllib.request.urlopen(urllib.request.Request(base + 'api/setups', headers={'Authorization': 'Bearer ' + token})) as response:
         state = json.load(response)
     assert state['enabled'] is False
-    print('Native smoke passed: packaged WebKit editor loaded, six keys visible, F18/F19 registered, background hide/reopen verified, keypad discovered. No hardware writes.')
+    print('Native smoke passed: packaged WebKit editor loaded, six keys visible, F13–F20 registered, matching title bar and no floating panel, background hide/reopen verified, keypad discovered. No hardware writes.')
 finally:
     server.terminate()
     server.wait(timeout=5)

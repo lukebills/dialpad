@@ -81,6 +81,56 @@ try:
         expect(page.locator('#copy-format')).to_have_value('formatted')
         expect(page.locator('#copy-reset')).to_have_value('30')
         expect(page.locator('#copy-double')).to_have_value('false')
+        # Conversion is an explicit draft edit, retaining the legacy formatting choice.
+        page.locator('#convert-multi').click()
+        expect(page.locator('#type')).to_have_value('multi_tap')
+        expect(page.locator('#tap-window')).to_have_value('350')
+        for tap, action in [('single','copy'),('double','paste'),('triple','cut')]:
+            expect(page.locator(f'#tap-{tap}-action')).to_have_value(action)
+            expect(page.locator(f'#tap-{tap}-format')).to_have_value('formatted')
+        page.locator('#tap-single-format').select_option('plain')
+        page.locator('#tap-window').fill('450')
+        page.locator('#tap-window').press('Tab')
+        page.locator('#tap-double-type').select_option('shortcut')
+        page.locator('#tap-double-key').select_option('V')
+        page.locator('#tap-double-cmd').check()
+        page.locator('#tap-triple-type').select_option('media')
+        page.locator('#tap-triple-action').select_option('play_pause')
+        # Each key gets independent tap actions, with default clipboard gestures.
+        page.locator('[data-control="key6"]').click()
+        page.locator('#type').select_option('multi_tap')
+        expect(page.locator('#tap-window')).to_have_value('350')
+        expect(page.locator('#tap-single-format')).to_have_value('plain')
+        page.locator('#tap-double-type').select_option('mouse')
+        page.locator('#tap-double-action').select_option('middle_click')
+        with page.expect_download() as tap_download:
+            page.locator('#export').click()
+        tap_profile=json.loads(Path(tap_download.value.path()).read_text())
+        key5=tap_profile['bindings']['key5']
+        assert key5['window_ms']==450
+        assert key5['single']['action']=='copy' and key5['single']['formatting']=='plain'
+        assert key5['double']=={'type':'shortcut','key':'V','modifiers':['cmd']}
+        assert key5['triple']=={'type':'media','action':'play_pause'}
+        assert tap_profile['bindings']['key6']['double']['action']=='middle_click'
+        page.locator('#file').set_input_files({'name':'multi.json','mimeType':'application/json','buffer':json.dumps(tap_profile).encode()})
+        expect(page.locator('#tap-double-action')).to_have_value('middle_click')
+        page.locator('[data-control="key5"]').click()
+        expect(page.locator('#tap-window')).to_have_value('450')
+        expect(page.locator('#tap-double-key')).to_have_value('V')
+        expect(page.locator('#tap-double-cmd')).to_be_checked()
+        expect(page.locator('[data-control="key5"] .key-shortcut')).to_contain_text('1× Copy')
+        expect(page.locator('[data-control="key5"] .key-shortcut')).to_contain_text('2× ⌘ / Win + V')
+        expect(page.locator('[data-control="key5"] .key-shortcut')).to_contain_text('3× play pause')
+        page.set_viewport_size({'width':390,'height':844})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.locator('.editor').screenshot(path='/private/tmp/dialpad-multi-tap-editor.png')
+        page.set_viewport_size({'width':1280,'height':1500})
+        page.locator('#tap-window').fill('99')
+        page.locator('#tap-window').press('Tab')
+        expect(page.locator('#tap-window')).to_have_value('450')
+        page.locator('[data-control="dial_ccw"]').click()
+        page.locator('#type').select_option('multi_tap')
+        expect(page.locator('#type')).to_have_value('shortcut')
         page.locator('#load-preset').click()
         page.locator('[data-control="key2"]').click()
         assert page.locator('#key').input_value()=='ENTER'
