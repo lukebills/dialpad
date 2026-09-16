@@ -44,7 +44,7 @@ jobs:
         name: Verify per-user updater
         shell: powershell
         run: ./scripts/test_windows_updater.ps1
-      - if: runner.os == 'Windows'
+      - if: always() && runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: Windows-window-preview

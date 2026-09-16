@@ -30,7 +30,7 @@ class WindowsEditor:
             raise RuntimeError('Windows editor is missing. Build the app or extract the entire portable ZIP.')
         self.lock = threading.Lock()
         self.process = subprocess.Popen([str(executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, text=True, encoding='utf-8', creationflags=0x08000000)
+            stderr=subprocess.DEVNULL, text=True, encoding='utf-8', creationflags=subprocess.CREATE_NO_WINDOW)
         _editor = self
         # WebView data stays writable when the EXE is in a read-only location.
         self.send({'url': url, 'user_data': str(Path(settings_folder) / 'WebView2'),

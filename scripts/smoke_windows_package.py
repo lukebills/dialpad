@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import struct
 from pathlib import Path
 import subprocess
 import tempfile
@@ -9,6 +10,13 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+# Both executables must be GUI-subsystem PE files, so ordinary launches show no console.
+for executable in (ROOT / 'dist/Dialpad/Dialpad.exe', ROOT / 'dist/Dialpad/_internal/windows/DialpadWindow.exe'):
+    image = executable.read_bytes()
+    pe = struct.unpack_from('<I', image, 0x3c)[0]
+    assert image[pe:pe + 4] == b'PE\0\0'
+    assert struct.unpack_from('<H', image, pe + 24 + 68)[0] == 2, executable.name
+
 with tempfile.TemporaryDirectory() as folder:
     process = subprocess.Popen([str(ROOT / 'dist/Dialpad/Dialpad.exe'), '--settings-dir', folder], env={**os.environ, 'DIALPAD_WINDOW_SMOKE': '1'})
     try:
