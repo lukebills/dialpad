@@ -124,3 +124,18 @@ background and hotkey-registration smoke. Tests use isolated settings and
 mocked/blocked USB writes. Physical rapid-press behavior needs a user test;
 Windows integration changes have not been run on a Windows host in this update.
 The public 0.1.0 release has not been replaced by this local rebuild.
+
+## Windows native editor and updater — 0.1.1
+
+CI run 35055382173 passed both platform builds and all 67 unit tests (one
+POSIX-only test skipped on Windows). The real Windows EXE passed native WebView2
+rendering (six visible keys), hide/reopen, global shortcut registration,
+single-instance reopen, read-only discovery, bundled agent guide and clean quit.
+Both Windows PE executables were verified as GUI subsystem, with no console.
+WebView2 profile cleanup is allowed up to ten seconds after host shutdown.
+
+The real updater script passed isolated Windows tests for install, repeat update,
+settings preservation, retaining old versions, checksum rejection and shortcut
+targets. Network and COM shortcut creation are mocked in this test; it consumes
+the same ZIP/checksum assets produced for release. The Windows native screenshot
+was visually reviewed. Physical keypad writes and input delivery were not tested.
