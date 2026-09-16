@@ -71,7 +71,10 @@ with tempfile.TemporaryDirectory() as folder:
             try:
                 shutil.rmtree(folder)
                 break
-            except PermissionError:
+            except OSError as exc:
+                # WebView2 may still create/remove cache files while shutting down.
+                if getattr(exc, 'winerror', None) not in (5, 32, 145):
+                    raise
                 if attempt == 99:
                     raise
                 time.sleep(.1)
