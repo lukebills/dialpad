@@ -20,6 +20,7 @@ sealed class DialpadWindow : Form
     readonly Uri address;
     readonly string userData;
     readonly bool smoke;
+    readonly string screenshot;
     readonly ToolStripMenuItem layoutItem = new ToolStripMenuItem("Dialpad is starting…");
     bool exiting, loaded;
 
@@ -33,6 +34,7 @@ sealed class DialpadWindow : Form
             throw new ArgumentException("Invalid local app address.");
         userData = (string)config["user_data"];
         smoke = config.ContainsKey("smoke") && (bool)config["smoke"];
+        screenshot = config.ContainsKey("screenshot") ? (string)config["screenshot"] : null;
         http.BaseAddress = new Uri(address.GetLeftPart(UriPartial.Authority) + "/api/");
         http.Timeout = TimeSpan.FromSeconds(15);
         http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", address.Fragment.Substring(1));
@@ -147,6 +149,10 @@ sealed class DialpadWindow : Form
                     if (result == "true") {
                         bool hidden = false, reopened = false;
                         if (smoke) { HideEditor(); hidden = !Visible; ShowEditor(); reopened = Visible; }
+                        if (smoke && screenshot != null) {
+                            using (var file = File.Create(screenshot))
+                                await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, file);
+                        }
                         Report(new { kind = "ready", ready = true, keys = 6, native = true, hidden = hidden, reopened = reopened });
                         return;
                     }

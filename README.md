@@ -8,17 +8,40 @@ The source code is available here to customize and build yourself. The packaged 
 
 This project targets the **CH57x-2 family with USB vendor/product ID `1189:8890`**, using six keys and one dial that turns and presses. That is the family used during development. AliExpress sellers can reuse the same product photographs for different hardware or firmware, so six keys and a knob alone do **not** guarantee compatibility. Confirm the USB identity and test discovery before applying a layout. Windows programming on physical hardware still needs validation; Mac testing does not establish support for every similar keypad.
 
-### Download version 0.1.0
+### Download or update on Windows
 
-Get the portable packages from [GitHub Releases](https://github.com/lukebills/dialpad/releases/tag/v0.1.0). On a **Windows PowerShell terminal**, run:
+Run this once in **Windows PowerShell** to download the latest published app,
+verify its checksum, and create **Dialpad** and **Update Dialpad** in your Start menu:
 
 ```powershell
-curl.exe -fL "https://github.com/lukebills/dialpad/releases/download/v0.1.0/Dialpad-0.1.0-windows-x64.zip" -o Dialpad-0.1.0-windows-x64.zip
-Expand-Archive -Path .\Dialpad-0.1.0-windows-x64.zip -DestinationPath .\Dialpad-0.1.0
-Start-Process .\Dialpad-0.1.0\Dialpad\Dialpad.exe
+curl.exe -fL "https://github.com/lukebills/dialpad/releases/latest/download/Update-Dialpad.ps1" -o "$env:TEMP\Update-Dialpad.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\Update-Dialpad.ps1"
 ```
 
-Extract the **whole archive** and keep the EXE beside its supporting files. No installer or administrator elevation is requested by Dialpad. The Windows executable is unsigned, and workplace policies may still restrict it. Matching `.sha256` checksum files are included in the release.
+After that, open **Dialpad** from Start. Use **Update Dialpad** for later releases.
+The updater briefly opens PowerShell; the app itself opens a normal Windows window
+with the same editor as Mac, without a terminal or browser tab. Close the window
+or choose Run in background to leave the keypad companion in the system tray.
+Double-click the tray icon to reopen it; its menu shows the active setup and Quit.
+
+The updater installs only into `%LOCALAPPDATA%\Programs\Dialpad`, closes the old
+app gracefully, keeps older versions for rollback and preserves your setups in
+`%APPDATA%\Dialpad`. No administrator rights are requested. It does not install
+a service, schedule updates, or change the computer's PowerShell execution policy.
+Run it with `-DesktopShortcut` if you also want a desktop shortcut.
+
+For a completely manual portable download, get the Windows ZIP from
+[GitHub Releases](https://github.com/lukebills/dialpad/releases/latest), extract the
+**whole archive**, and double-click `Dialpad/Dialpad.exe`. Keep all supporting files.
+You can move the extracted folder; settings remain separate. Windows executables
+are unsigned, and workplace policies may restrict them. Checksums accompany each ZIP.
+
+The Windows window requires .NET Framework 4.6.2+ and Microsoft Edge WebView2
+Evergreen Runtime. If WebView2 is missing, Dialpad explains how to get it from
+[Microsoft](https://developer.microsoft.com/microsoft-edge/webview2).
+The runtime supports [per-user installation](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)
+without an elevated installer. Dialpad does not silently install it. After the
+runtime and app are available, the editor works locally without internet.
 
 For Mac, download the archive matching your Mac's architecture and open `Dialpad.app`. The GitHub-built Mac app is ad-hoc signed and not notarized. Local development builds can use your own configured Apple signing identity. **macOS device-control permission is required for app-managed key actions.**
 
@@ -26,7 +49,7 @@ For Mac, download the archive matching your Mac's architecture and open `Dialpad
 
 Open `dist/Dialpad.app`. The editor opens in its own Mac window. Its menu-bar item shows the current cycling setup: click for a visual six-key-and-dial preview. Closing the editor keeps the companion running; **Quit Dialpad** stops both. No installation or Python setup is needed for the packaged app.
 
-The source version runs with Python 3.10+: `python3 app.py`. macOS source development additionally needs libusb; the packaged app includes it. Windows uses built-in HID APIs. Neither route executes the manufacturer's software.
+The source version runs with Python 3.10+: `python3 app.py`. macOS source development additionally needs libusb; the packaged app includes it. Windows uses built-in HID APIs; source development also requires building its native window with `python scripts/build_windows_window.py` on Windows. Neither route executes the manufacturer's software.
 
 ## First use
 
@@ -59,7 +82,7 @@ Saved setups live in `~/Library/Application Support/Dialpad/setups.json` on Mac 
 
 The everyday screen is one editable keypad with a setup dropdown. The side panel switches between key options and cycling checkboxes. Connection discovery refreshes every four seconds without invalidating an unchanged review.
 
-On Mac, **Run in background** or closing the window leaves the menu-bar companion running. Reopen it from the menu bar or launch Dialpad again; a second launch brings the existing editor forward. This single-instance behavior applies on both Mac and Windows. **Quit** ends the companion. This does not install a login item or start it automatically after a Mac reboot. On Windows, closing the companion minimizes it to the taskbar; closing the browser editor does not stop it.
+On Mac, **Run in background** or closing the window leaves the menu-bar companion running. Reopen it from the menu bar or launch Dialpad again; a second launch brings the existing editor forward. This single-instance behavior applies on both Mac and Windows. **Quit** ends the companion. This does not install a login item or start it automatically after a Mac reboot. On Windows, closing the editor hides it to the system tray and keeps the companion running. Double-click the tray icon or launch Dialpad again to reopen it.
 
 Choose **Multi-tap** for any of the six keys to assign **Single tap**, **Double tap**, and **Triple tap** independently. Defaults are Copy, Paste, and Cut with plain-text copying. Each action can instead be a keyboard shortcut, mouse action, or common media control. The adjustable gap between taps defaults to **350 ms** (100–1000 ms). Single and double actions wait for this gap to expire; a third tap runs immediately. Each key has its own counter, and completed gestures always start fresh. There is no alternating phase or idle reset to remember.
 
@@ -81,7 +104,7 @@ Switching layouts or relaunching resets to Copy and cancels pending gestures. A 
 
 - macOS: native IOKit enumeration plus bundled libusb for the raw programming interface. No driver replacement, firmware flashing or manufacturer executable. Packaged builds match the Mac architecture used to build them.
 - Windows: native HID output path implemented, but not tested on Windows hardware. Some firmware versions may not expose a compatible native programming interface. Do not assume the Mac-tested raw transport proves Windows compatibility.
-- Mac builds use a native WebKit editor and menu bar. Windows uses a minimized companion with a browser editor and global F18 hotkey; the packaged Windows companion passed startup, hotkey registration, device discovery, single-instance reopen and shutdown checks on a Windows GitHub runner. Physical keypad programming still needs validation. Both communicate only with a server bound to `127.0.0.1` using a per-launch secret. Internet is not required.
+- Mac builds use a native WebKit editor and menu bar. Windows uses a native WinForms/WebView2 editor, a system-tray icon and global hotkeys; Tk runs hidden only for clipboard and timer services. Physical keypad programming still needs validation. Both communicate only with a server bound to `127.0.0.1` using a per-launch secret. Internet is not required.
 - The local build uses the configured Apple Development signing identity and is not Apple-notarized. Public distribution with a smooth first launch needs appropriate signing/notarization; we do not disable Gatekeeper.
 - Only the reserved F13–F20 hotkeys are handled globally. There is no background dictation engine, arbitrary script execution, or automatic foreground-app switching. The scratch test area only sees input while it has focus.
 - Check **Saved in app** before quitting; export remains available for backup. Saved profiles are app settings, not hardware backups.
@@ -97,7 +120,7 @@ python3 -m venv .venv
 
 Mac builds require Python 3.12+ and the Xcode command-line tools to compile the Swift desktop host and vendored libusb source for a macOS 12 deployment target. This removes dependence on Homebrew’s binary deployment target; older-macOS runtime behavior still needs testing. Source-only launches use the browser unless the native host is supplied; `--no-browser` is available for test harnesses.
 
-On Windows use `.venv\Scripts\python.exe` in place of `.venv/bin/python`. Build on each target OS; PyInstaller does not cross-compile. Windows output is `dist/Dialpad/` (keep the EXE and its supporting files together). Mac output is `dist/Dialpad.app`. The GitHub Actions workflow builds and tests both target platforms, packages versioned ZIP files with checksums, and publishes a release when a version tag is pushed.
+On Windows use `.venv\Scripts\python.exe` in place of `.venv/bin/python`. The build uses the system .NET Framework C# compiler and downloads the Microsoft WebView2 SDK from NuGet, checking its pinned SHA-256. Its redistributable libraries and licence are bundled beside the native window. Build on each target OS; PyInstaller does not cross-compile. Windows output is `dist/Dialpad/` (keep the EXE and its supporting files together). Mac output is `dist/Dialpad.app`. The GitHub Actions workflow builds and tests both target platforms, packages versioned ZIP files with checksums, and publishes a release when a version tag is pushed.
 
 The app icon is an original editable SVG in `ui/icon.svg`. Generated Mac, Windows and PNG icons are in `assets/`; `assets/render_icon.py` regenerates them with Playwright/Chrome and the macOS icon tools. The native host also uses a small template keypad symbol in the menu bar.
 

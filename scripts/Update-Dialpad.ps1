@@ -50,17 +50,34 @@ try {
         $session = Get-Content -Raw -Encoding UTF8 $sessionFile | ConvertFrom-Json
         $base = [Uri]$session.base
         if ($base.Scheme -ne 'http' -or $base.Host -ne '127.0.0.1' -or $base.AbsolutePath -ne '/' -or $base.UserInfo) { throw 'Invalid local Dialpad session. Quit Dialpad and retry.' }
-        $client = New-Object Net.WebClient
-        $client.Proxy = $null
-        $client.Headers['Authorization'] = 'Bearer ' + $session.token
-        $client.Headers['Content-Type'] = 'application/json'
-        try { $null = $client.UploadString($session.base + 'api/quit', '{}') }
-        catch { throw 'Could not close the running Dialpad. Quit it from its tray/companion, then retry.' }
-        finally { $client.Dispose() }
-        $deadline = (Get-Date).AddSeconds(20)
-        while (Test-Path $sessionFile) {
-            if ((Get-Date) -gt $deadline) { throw 'Dialpad is still closing. Wait a moment, then retry.' }
-            Start-Sleep -Milliseconds 200
+        $request = [Net.HttpWebRequest]::Create($session.base + 'api/quit')
+        $request.Proxy = $null
+        $request.AllowAutoRedirect = $false
+        $request.Timeout = 5000
+        $request.Method = 'POST'
+        $request.Headers['Authorization'] = 'Bearer ' + $session.token
+        $request.ContentType = 'application/json'
+        $bytes = [Text.Encoding]::UTF8.GetBytes('{}')
+        $request.ContentLength = $bytes.Length
+        $closedRunningApp = $false
+        try {
+            $stream = $request.GetRequestStream()
+            try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+            $response = $request.GetResponse()
+            $response.Dispose()
+            $closedRunningApp = $true
+        } catch [Net.WebException] {
+            if ($_.Exception.Status -ne [Net.WebExceptionStatus]::ConnectFailure) {
+                throw 'Could not close the running Dialpad. Quit it from its tray/companion, then retry.'
+            }
+            # A crashed app can leave a stale session file. A fresh launch replaces it.
+        }
+        if ($closedRunningApp) {
+            $deadline = (Get-Date).AddSeconds(20)
+            while (Test-Path $sessionFile) {
+                if ((Get-Date) -gt $deadline) { throw 'Dialpad is still closing. Wait a moment, then retry.' }
+                Start-Sleep -Milliseconds 200
+            }
         }
     }
 

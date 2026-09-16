@@ -40,6 +40,15 @@ jobs:
       - if: runner.os == 'macOS'
         run: codesign --verify --deep --strict dist/Dialpad.app
       - run: python scripts/package_release.py
+      - if: runner.os == 'Windows'
+        name: Verify per-user updater
+        shell: powershell
+        run: ./scripts/test_windows_updater.ps1
+      - if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-window-preview
+          path: build/windows-preview.png
       - uses: actions/upload-artifact@v4
         with:
           name: Dialpad-${{ runner.os }}
@@ -56,6 +65,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
+          pattern: Dialpad-*
           merge-multiple: true
       - name: Publish release
         env:

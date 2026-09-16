@@ -1,6 +1,7 @@
 """Start the Windows package with isolated settings; no USB writes or OS input."""
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -40,6 +41,7 @@ with tempfile.TemporaryDirectory() as folder:
             time.sleep(.2)
         assert window['native'] and window['keys'] == 6
         assert window['hidden'] and window['reopened']
+        shutil.copy2(Path(folder) / 'windows-preview.png', ROOT / 'build/windows-preview.png')
         assert 'guide' in api('agent')
         assert state['profiles'] and not state['enabled']
         assert isinstance(api('devices')['devices'], list)

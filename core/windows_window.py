@@ -34,7 +34,8 @@ class WindowsEditor:
         _editor = self
         # WebView data stays writable when the EXE is in a read-only location.
         self.send({'url': url, 'user_data': str(Path(settings_folder) / 'WebView2'),
-                   'smoke': os.environ.get('DIALPAD_WINDOW_SMOKE') == '1'})
+                   'smoke': os.environ.get('DIALPAD_WINDOW_SMOKE') == '1',
+                   'screenshot': str(Path(settings_folder) / 'windows-preview.png')})
         def watch():
             for line in self.process.stdout:
                 try:
