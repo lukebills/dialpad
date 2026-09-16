@@ -16,7 +16,8 @@ args = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--name',
 if sys.platform == 'darwin':
     args += ['--icon', str(ROOT / 'assets' / 'Dialpad.icns')]
     # Reuse the same identity for every release so macOS privacy grants survive updates.
-    identity = os.environ.get('DIALPAD_SIGNING_IDENTITY')
+    identity_file = ROOT / '.signing-identity'
+    identity = os.environ.get('DIALPAD_SIGNING_IDENTITY') or (identity_file.read_text().strip() if identity_file.exists() else None)
     if identity:
         args += ['--codesign-identity', identity]
     else:
