@@ -155,15 +155,15 @@ sealed class DialpadWindow : Form
                 Report(new { kind = "error", message = "The editor did not finish loading." });
             };
             core.Navigate(address.AbsoluteUri);
+            return;
         } catch (WebView2RuntimeNotFoundException) {
             Report(new { kind = "error", message = "Microsoft Edge WebView2 Runtime is missing." });
             MessageBox.Show(this, "Dialpad needs Microsoft Edge WebView2 Runtime to display its Windows window.\n\nInstall the Evergreen Runtime from https://developer.microsoft.com/microsoft-edge/webview2 then reopen Dialpad. A standard user can install it for their own account.", "WebView2 Runtime required", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            await QuitApp();
         } catch (Exception) {
             Report(new { kind = "error", message = "The Windows editor could not start." });
             MessageBox.Show(this, "The Windows editor could not start. Keep the whole Dialpad folder together and check that Microsoft Edge WebView2 Runtime is installed.", "Dialpad", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            await QuitApp();
         }
+        await QuitApp();
     }
 
     public void Listen()
