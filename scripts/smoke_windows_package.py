@@ -57,3 +57,13 @@ with tempfile.TemporaryDirectory() as folder:
         if process.poll() is None:
             process.terminate()
             process.wait(timeout=10)
+        # WebView2 releases its profile asynchronously after the host exits.
+        # Require eventual release instead of racing TemporaryDirectory cleanup.
+        for attempt in range(100):
+            try:
+                shutil.rmtree(folder)
+                break
+            except PermissionError:
+                if attempt == 99:
+                    raise
+                time.sleep(.1)
