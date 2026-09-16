@@ -1,6 +1,7 @@
 """Dialpad local configurator. No device writes occur until preview + Apply."""
 from __future__ import annotations
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -138,6 +139,12 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/setups/save':
                 with WRITE_LOCK:
                     self.reply(200, SETUPS.save(body.get('profiles')))
+            elif self.path == '/api/setups/upsert':
+                if 'previous_name' not in body:
+                    raise ValueError('Specify the setup being edited, or null for a new setup.')
+                with WRITE_LOCK:
+                    expected = {'expected_profile': body['expected_profile']} if 'expected_profile' in body else {}
+                    self.reply(200, SETUPS.upsert(body.get('profile'), body['previous_name'], **expected))
             elif self.path == '/api/setups/order':
                 with WRITE_LOCK:
                     self.reply(200, SETUPS.save_order(body.get('names')))
@@ -203,6 +210,51 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.reply(503, {'error': str(exc)})
 
+def acquire_instance_lock(path):
+    """Hold one companion per settings directory until the file is closed.
+
+    Both operating systems release the lock if the owner process exits, even
+    during startup failure. Return None only when another instance owns it.
+    """
+    stream = path.open('a+b')
+    try:
+        if sys.platform == 'win32':
+            import msvcrt
+            stream.seek(0, os.SEEK_END)
+            if stream.tell() == 0:
+                stream.write(b'\0')
+                stream.flush()
+            stream.seek(0)
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return stream
+    except OSError as exc:
+        stream.close()
+        if exc.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+            return None
+        raise
+    except BaseException:
+        stream.close()
+        raise
+
+
+def reopen_existing_instance(session_path):
+    import urllib.request
+    for attempt in range(20):
+        try:
+            session = json.loads(session_path.read_text(encoding='utf-8'))
+            request = urllib.request.Request(session['base'] + 'api/show', data=b'{}',
+                headers={'Authorization': 'Bearer ' + session['token'], 'Content-Type': 'application/json'})
+            with urllib.request.urlopen(request, timeout=1):
+                return
+        except (OSError, ValueError, KeyError):
+            time.sleep(0.1)
+    location = 'menu-bar icon' if sys.platform == 'darwin' else 'taskbar window'
+    raise RuntimeError(f'Dialpad is already running but could not reopen its window. Use its {location}.')
+
+
 def main():
     global SETUPS
     parser = argparse.ArgumentParser()
@@ -213,27 +265,15 @@ def main():
     if args.settings_dir:
         SETUPS = Setups(validate_profile, args.settings_dir / 'setups.json')
     instance_lock = None
-    if sys.platform == 'darwin' and not args.no_browser:
-        import fcntl
-        import urllib.request
+    if sys.platform in ('darwin', 'win32') and not args.no_browser:
         SETUPS.path.parent.mkdir(parents=True, exist_ok=True)
-        instance_lock = (SETUPS.path.parent / 'instance.lock').open('a')
         session_path = SETUPS.path.parent / 'session.json'
-        try:
-            fcntl.flock(instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        instance_lock = acquire_instance_lock(SETUPS.path.parent / 'instance.lock')
+        if instance_lock is None:
             # Reopen the existing companion instead of competing for global hotkeys.
-            for attempt in range(20):
-                try:
-                    session = json.loads(session_path.read_text())
-                    request = urllib.request.Request(session['base'] + 'api/show', data=b'{}',
-                        headers={'Authorization': 'Bearer ' + session['token'], 'Content-Type': 'application/json'})
-                    with urllib.request.urlopen(request, timeout=1):
-                        return
-                except (OSError, ValueError, KeyError):
-                    time.sleep(0.1)
-            raise RuntimeError('Dialpad is already running but could not reopen its window. Use its menu-bar icon.')
-    catalog = json.loads((ROOT / 'ui' / 'starters.json').read_text())
+            reopen_existing_instance(session_path)
+            return
+    catalog = json.loads((ROOT / 'ui' / 'starters.json').read_text(encoding='utf-8'))
     SETUPS.install_defaults(list(catalog['mac' if sys.platform == 'darwin' else 'windows'].values()))
     if SETUPS.order is None and not SETUPS.load_failed:
         SETUPS.save_order([p['name'] for p in SETUPS.profiles])
@@ -242,8 +282,9 @@ def main():
     if instance_lock is not None:
         temporary = session_path.with_suffix('.tmp')
         descriptor = os.open(temporary, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, 'w') as stream:
+        if sys.platform != 'win32':
+            os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
             json.dump({'base': f'http://127.0.0.1:{server.server_port}/', 'token': TOKEN}, stream)
         temporary.replace(session_path)
     desktop = None

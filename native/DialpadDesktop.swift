@@ -601,7 +601,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard CommandLine.arguments.contains("--smoke-test") else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            self.web.evaluateJavaScript("JSON.stringify({keys:document.querySelectorAll('.key').length,ready:runtime?.ready,connection:document.getElementById('connection').textContent,saved:document.getElementById('save-setup').textContent})") { result, error in
+            self.web.evaluateJavaScript("JSON.stringify({keys:document.querySelectorAll('.key').length,ready:runtime?.ready,connection:document.getElementById('connection').textContent,saved:document.getElementById('autosave-status').textContent})") { result, error in
                 guard let result = result as? String, let bytes = result.data(using: .utf8),
                       var status = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] else {
                     print("Native smoke failed: \(String(describing: error))"); fflush(stdout); NSApp.terminate(nil); return

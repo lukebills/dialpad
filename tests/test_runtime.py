@@ -1,8 +1,9 @@
 """Companion state tests: all transfers are mocked, settings isolated."""
 import tempfile
+import copy
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from app import Setups, validate_profile, profile_packets
 from core.protocol import encode_binding
 from test_server import profile
@@ -74,3 +75,69 @@ class RuntimeTests(unittest.TestCase):
         p['bindings']['key5']=toggle
         with self.assertRaises(ValueError):
             validate_profile(p)
+
+    def test_upsert_rename_preserves_order_and_reviewed_runtime(self):
+        self.setups.save_order(['B', 'A'])
+        self.setups.activate(self.setups.snapshot(), 'mock')
+        runtime = self.path.with_name('active-cycle.json').read_bytes()
+        original = copy.deepcopy(self.setups.profiles[0])
+        edited = copy.deepcopy(original)
+        edited['name'] = 'Renamed A'
+        edited['bindings']['key1']['key'] = 'TAB'
+        state = self.setups.upsert(edited, 'A', original)
+        self.assertEqual(state['order'], ['B', 'Renamed A'])
+        self.assertEqual(state['cycle_names'], ['B', 'A'])
+        self.assertEqual(self.path.with_name('active-cycle.json').read_bytes(), runtime)
+        loaded = Setups(validate_profile, self.path)
+        self.assertEqual(loaded.profiles[0], edited)
+        self.assertEqual(loaded.order, ['B', 'Renamed A'])
+
+    def test_upsert_rejects_stale_updates_and_collisions_without_clobbering(self):
+        initial = copy.deepcopy(self.setups.profiles)
+        edited = copy.deepcopy(initial[0])
+        edited['name'] = 'B'
+        stale = copy.deepcopy(initial[0])
+        stale['bindings']['key1']['key'] = 'TAB'
+        before = self.path.read_bytes()
+        for arguments in ((edited, 'A'), (initial[0], None),
+                          (initial[0], 'missing'), (initial[0], 'A', stale),
+                          (initial[0], [])):
+            with self.subTest(arguments=arguments), self.assertRaises(ValueError):
+                self.setups.upsert(*arguments)
+        self.assertEqual(self.setups.profiles, initial)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_upsert_new_setup_preserves_unrelated_edits_and_cycle_selection(self):
+        self.setups.save_order(['B'])
+        original = copy.deepcopy(self.setups.profiles[0])
+        edited = copy.deepcopy(original)
+        edited['bindings']['key1']['key'] = 'TAB'
+        self.setups.upsert(edited, 'A', original)
+        new = profile()
+        new['name'] = 'C'
+        self.setups.upsert(new, None)
+        self.assertEqual(self.setups.profiles, [edited, self.setups.profiles[1], new])
+        self.assertEqual(self.setups.order, ['B'])
+
+    def test_unicode_persistence_does_not_use_system_text_encoding(self):
+        original_open = Path.open
+        def legacy_open(path, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
+            # Reproduce Windows systems whose default text encoding is cp1252.
+            if 'b' not in mode and encoding is None:
+                encoding = 'cp1252'
+            return original_open(path, mode, buffering, encoding, errors, newline)
+        setup = profile()
+        setup['name'] = '编码 ⌘ → café'
+        setup['labels'] = {'key1': '复制 📋'}
+        setup['starter_id'] = 'unicode-fixture'
+        with patch.object(Path, 'open', legacy_open):
+            self.setups.install_defaults([setup])
+            self.setups.save_order([setup['name']])
+            self.setups.activate(self.setups.snapshot(), 'mock')
+            loaded = Setups(validate_profile, self.path)
+            loaded.restore()
+        self.assertFalse(loaded.load_failed)
+        self.assertEqual(loaded.profiles[-1], setup)
+        self.assertEqual(loaded.order, [setup['name']])
+        self.assertEqual(loaded.state()['current']['labels']['key1'], '复制 📋')
+        self.assertIn('编码', self.path.read_bytes().decode('utf-8'))

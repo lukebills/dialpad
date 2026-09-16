@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 
 ROOT = Path(__file__).parent.resolve()
 args = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--name', 'Dialpad',
@@ -28,10 +29,22 @@ if sys.platform == 'darwin':
     subprocess.run(['xcrun', 'swiftc', '-O', '-target', f'{platform.machine()}-apple-macosx12.0',
                     str(ROOT / 'native' / 'DialpadDesktop.swift'), '-o', str(native)], check=True)
     args += ['--add-binary', f'{native}:.']
-    paths = ['/opt/homebrew/lib/libusb-1.0.dylib', '/usr/local/lib/libusb-1.0.dylib']
-    lib = next((Path(p) for p in paths if Path(p).exists()), None)
-    if lib is None:
-        raise SystemExit('Build requires libusb (brew install libusb). End users get a bundled copy.')
+    # Build the vendored source for the same minimum OS as the native host.
+    # Homebrew's binary may target the build machine's much newer macOS version.
+    source_root = ROOT / 'build' / 'vendor'
+    source_root.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(ROOT / 'vendor' / 'libusb-1.0.30-source.tar.gz') as archive:
+        archive.extractall(source_root, filter='data')
+    source = source_root / 'libusb-1.0.30'
+    lib = source_root / 'libusb-1.0.0.dylib'
+    units = ['core.c', 'descriptor.c', 'hotplug.c', 'io.c', 'strerror.c', 'sync.c',
+             'os/events_posix.c', 'os/threads_posix.c', 'os/darwin_usb.c']
+    subprocess.run(['xcrun', 'clang', '-dynamiclib', '-O2', '-fvisibility=hidden',
+                    '-arch', platform.machine(), '-mmacosx-version-min=12.0',
+                    '-I', str(source / 'Xcode'), '-I', str(source / 'libusb'),
+                    *[str(source / 'libusb' / unit) for unit in units],
+                    '-framework', 'IOKit', '-framework', 'CoreFoundation', '-framework', 'Security',
+                    '-install_name', '@rpath/libusb-1.0.0.dylib', '-o', str(lib)], check=True)
     class USBVersion(ctypes.Structure):
         _fields_ = [('major', ctypes.c_uint16), ('minor', ctypes.c_uint16), ('micro', ctypes.c_uint16)]
     usb = ctypes.CDLL(str(lib))

@@ -6,6 +6,7 @@ import queue
 import time
 from core.clipboard_gesture import ClipboardGesture
 from core.multi_tap import MultiTapGesture
+from core.windows_hotkeys import WindowsHotkeys
 import threading
 import tkinter as tk
 import urllib.request
@@ -24,7 +25,8 @@ def launch(url, shutdown):
     text = tk.StringVar(value='Connecting…')
     tk.Label(root, textvariable=text, bg='#f5f4ef', fg='#293e2f', justify='left',
              wraplength=345, padx=18, pady=18).pack(fill='both', expand=True)
-    state = {'enabled': False, 'generation': -1, 'pending': False, 'polling': False, 'closed': False}
+    state = {'enabled': False, 'generation': -1, 'pending': False, 'polling': False, 'closed': False, 'show_request': 0}
+    hotkeys = WindowsHotkeys(lambda kind, data: results.put(('hotkey-' + kind, data, None)))
 
     def request(path, body=None, kind='poll'):
         def worker():
@@ -46,8 +48,7 @@ def launch(url, shutdown):
 
     def close():
         state['closed'] = True
-        for hotkey_id in range(1, 9):
-            user32.UnregisterHotKey(None, hotkey_id)
+        hotkeys.stop()
         root.destroy()
         shutdown()
 
@@ -213,6 +214,10 @@ def launch(url, shutdown):
         return action.get('action', '').replace('_', ' ')
 
     def update(data):
+        show_request = data.get('show_request', 0)
+        if show_request != state['show_request']:
+            state['show_request'] = show_request
+            webbrowser.open(url)
         state['enabled'] = data['enabled']
         if not state['enabled']:
             reset_multi()
@@ -248,17 +253,19 @@ def launch(url, shutdown):
         state['generation'] = data['generation']
 
     def tick():
-        msg = wintypes.MSG()
-        # RegisterHotKey and PeekMessage run on this same desktop thread.
-        while user32.PeekMessageW(ctypes.byref(msg), None, 0x0312, 0x0312, 1):
-            if msg.wParam == 1:
-                cycle()
-            elif msg.wParam == 2:
-                alternate_clipboard()
-            elif 3 <= msg.wParam <= 8:
-                multi_tap(f'key{msg.wParam-2}')
         while not results.empty():
             kind, data, error = results.get_nowait()
+            if kind == 'hotkey-ready':
+                request('desktop-ready', data, 'ready')
+                continue
+            if kind == 'hotkey-hotkey':
+                if data == 1:
+                    cycle()
+                elif data == 2:
+                    alternate_clipboard()
+                elif 3 <= data <= 8:
+                    multi_tap(f'key{data-2}')
+                continue
             if kind == 'cycle':
                 state['pending'] = False
             if kind == 'poll':
@@ -285,11 +292,11 @@ def launch(url, shutdown):
     next_button.pack(pady=3)
     tk.Button(root, text='Quit Dialpad', command=close).pack(pady=8)
     root.protocol('WM_DELETE_WINDOW', root.iconify)
-    ready = bool(user32.RegisterHotKey(None, 1, 0x4000, 0x81))  # MOD_NOREPEAT, VK_F18
-    copy_ready = bool(user32.RegisterHotKey(None, 2, 0x4000, 0x82))
-    multi_ready = [bool(user32.RegisterHotKey(None, i+3, 0x4000, key)) for i, key in enumerate((0x7C, 0x7D, 0x7E, 0x7F, 0x80, 0x83))]
-    request('desktop-ready', {'ready': ready and copy_ready and all(multi_ready), 'error': 'A reserved F13–F20 shortcut is in use. Close another Dialpad instance or app using these keys and reopen.'}, 'ready')
+    hotkeys.start()
     webbrowser.open(url)
     tick()
     poll()
-    root.mainloop()
+    try:
+        root.mainloop()
+    finally:
+        hotkeys.stop()

@@ -6,6 +6,8 @@ from pathlib import Path
 import sys
 import time
 
+_UNSET = object()
+
 
 def storage_path():
     base = Path(os.environ.get('APPDATA', Path.home())) if sys.platform == 'win32' else Path.home() / 'Library/Application Support'
@@ -32,7 +34,7 @@ class Setups:
         try:
             order = self.path.with_name('cycle-order.json')
             if order.exists():
-                value = json.loads(order.read_text())
+                value = json.loads(order.read_text(encoding='utf-8'))
                 if isinstance(value, list) and all(isinstance(n, str) for n in value):
                     self.order = value
         except (ValueError, OSError):
@@ -41,7 +43,7 @@ class Setups:
             if self.path.exists():
                 if self.path.stat().st_size > 262144:
                     raise ValueError('Saved setups file is too large.')
-                self.profiles = self.checked(json.loads(self.path.read_text()))
+                self.profiles = self.checked(json.loads(self.path.read_text(encoding='utf-8')))
         except (ValueError, OSError, TypeError, KeyError) as exc:
             self.load_failed = True
             self.error = 'Could not load saved setups: ' + str(exc)
@@ -53,7 +55,7 @@ class Setups:
         defaults = self.checked(profiles)
         marker = self.path.with_name('preloaded-layouts.json')
         try:
-            installed = json.loads(marker.read_text()) if marker.exists() else []
+            installed = json.loads(marker.read_text(encoding='utf-8')) if marker.exists() else []
             if not isinstance(installed, list) or any(not isinstance(v, str) for v in installed):
                 raise ValueError('Invalid preload history.')
             installed = set(installed)
@@ -75,7 +77,7 @@ class Setups:
                 self.save(updated)
             marker.parent.mkdir(parents=True, exist_ok=True)
             temporary = marker.with_suffix('.tmp')
-            temporary.write_text(json.dumps(sorted(installed)))
+            temporary.write_text(json.dumps(sorted(installed)), encoding='utf-8')
             temporary.replace(marker)
         except (OSError, ValueError, TypeError) as exc:
             self.error = 'Could not preload all layouts: ' + str(exc)
@@ -93,27 +95,66 @@ class Setups:
             raise ValueError('Give each setup a different name.')
         return result
 
-    def save(self, profiles):
+    def save(self, profiles, *, order=_UNSET):
         checked = self.checked(profiles)
+        if order is _UNSET:
+            order = self.order
+        if order is not None:
+            if not isinstance(order, list) or any(not isinstance(n, str) for n in order) or len(set(order)) != len(order):
+                raise ValueError('Choose distinct setups for the cycle.')
+            names = {p['name'] for p in checked}
+            order = [n for n in order if n in names]
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix('.tmp')
-        with temporary.open('w') as stream:
+        with temporary.open('w', encoding='utf-8') as stream:
             json.dump(checked, stream, ensure_ascii=False, indent=2)
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(self.path)
         self.profiles = checked
-        if self.order is not None:
-            self.save_order([n for n in self.order if any(p['name'] == n for p in checked)])
+        if order is not None:
+            self.save_order(order)
         # An enabled cycle keeps its reviewed snapshot until explicitly re-enabled.
         return self.state()
+
+    def upsert(self, profile, previous_name, expected_profile=_UNSET):
+        """Save one editor draft without replacing unrelated setups or the live cycle.
+
+        The HTTP caller holds WRITE_LOCK across validation and persistence. An
+        optional stored snapshot prevents an older editor from overwriting a
+        setup changed by another editor.
+        """
+        checked = self.checked([profile])[0]
+        if previous_name is not None and (not isinstance(previous_name, str) or not previous_name):
+            raise ValueError('Choose the setup being edited.')
+        profiles = copy.deepcopy(self.profiles)
+        names = [p['name'] for p in profiles]
+        if previous_name is None:
+            if checked['name'] in names:
+                raise ValueError('A setup with that name already exists. Choose a different name.')
+            if expected_profile is not _UNSET and expected_profile is not None:
+                raise ValueError('A new setup cannot replace an existing setup.')
+            profiles.append(checked)
+        else:
+            if previous_name not in names:
+                raise ValueError('This setup was removed or renamed. Select it again before editing.')
+            index = names.index(previous_name)
+            if expected_profile is not _UNSET and profiles[index] != expected_profile:
+                raise ValueError('This setup changed in another editor. Select it again before editing.')
+            if checked['name'] != previous_name and checked['name'] in names:
+                raise ValueError('A setup with that name already exists. Choose a different name.')
+            profiles[index] = checked
+        order = self.order
+        if order is not None and previous_name is not None:
+            order = [checked['name'] if n == previous_name else n for n in order]
+        return self.save(profiles, order=order)
 
     def save_order(self, names):
         self.selected(names)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         target = self.path.with_name('cycle-order.json')
         temporary = target.with_suffix('.tmp')
-        temporary.write_text(json.dumps(names))
+        temporary.write_text(json.dumps(names), encoding='utf-8')
         temporary.replace(target)
         self.order = list(names)
         return self.state()
@@ -137,7 +178,7 @@ class Setups:
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix('.tmp')
         temporary.write_text(json.dumps({'profiles': self.cycle_profiles,
-            'device_id': self.device_id, 'active': self.active}))
+            'device_id': self.device_id, 'active': self.active}), encoding='utf-8')
         temporary.replace(target)
 
     def restore(self):
@@ -150,7 +191,7 @@ class Setups:
         try:
             if target.stat().st_size > 262144:
                 raise ValueError('Saved cycle is too large.')
-            data = json.loads(target.read_text())
+            data = json.loads(target.read_text(encoding='utf-8'))
             profiles = self.checked(data['profiles'])
             active = data['active']
             if not profiles or type(active) is not int or not 0 <= active < len(profiles):

@@ -65,6 +65,24 @@ class ServerTests(unittest.TestCase):
         self.devices.assert_called_once()
         self.write.assert_not_called()
 
+    def test_autosave_creates_updates_and_rejects_stale_snapshot_without_usb(self):
+        original = profile()
+        status, state = self.request('/api/setups/upsert', {'profile': original, 'previous_name': None})
+        self.assertEqual(status, 200)
+        self.assertEqual(state['profiles'], [original])
+        updated = copy.deepcopy(original)
+        updated['name'] = 'Renamed setup'
+        status, state = self.request('/api/setups/upsert', {'profile': updated,
+            'previous_name': original['name'], 'expected_profile': original})
+        self.assertEqual(status, 200)
+        self.assertEqual(state['profiles'], [updated])
+        status, _ = self.request('/api/setups/upsert', {'profile': updated,
+            'previous_name': updated['name'], 'expected_profile': original})
+        self.assertEqual(status, 400)
+        self.assertEqual(self.request('/api/setups/upsert', {'profile': updated})[0], 400)
+        self.assertEqual(app.SETUPS.profiles, [updated])
+        self.write.assert_not_called()
+
     def test_host_origin_token_gates(self):
         for headers, expected in [({'Host': 'attacker.example'}, 403),
                                   ({'Origin': 'https://attacker.example'}, 403),
