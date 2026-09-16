@@ -2,6 +2,7 @@
 from pathlib import Path
 import ctypes
 import platform
+import os
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,12 @@ args = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--name',
         '--hidden-import', 'core.protocol', '--hidden-import', 'core.transport']
 if sys.platform == 'darwin':
     args += ['--icon', str(ROOT / 'assets' / 'Dialpad.icns')]
+    # Reuse the same identity for every release so macOS privacy grants survive updates.
+    identity = os.environ.get('DIALPAD_SIGNING_IDENTITY')
+    if identity:
+        args += ['--codesign-identity', identity]
+    else:
+        print('Development build: ad-hoc signatures change on rebuild; macOS device-control permission may need renewing.', flush=True)
     args += ['--exclude-module', 'core.windows_desktop', '--exclude-module', 'tkinter']
     native = ROOT / 'build' / 'native' / 'DialpadDesktop'
     native.parent.mkdir(parents=True, exist_ok=True)

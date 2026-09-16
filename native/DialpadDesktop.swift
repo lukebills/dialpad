@@ -3,6 +3,15 @@ import WebKit
 import Carbon
 import ApplicationServices
 
+struct PermissionPromptGate {
+    var requested: Bool
+    mutating func shouldPrompt(trusted: Bool) -> Bool {
+        guard !trusted, !requested else { return false }
+        requested = true
+        return true
+    }
+}
+
 let tapKeyCodes: [String: CGKeyCode] = ["A": 0, "S": 1, "D": 2, "F": 3, "H": 4, "G": 5, "Z": 6, "X": 7, "C": 8, "V": 9, "B": 11, "Q": 12, "W": 13, "E": 14, "R": 15, "Y": 16, "T": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "EQUAL": 24, "9": 25, "7": 26, "MINUS": 27, "8": 28, "0": 29, "RIGHTBRACKET": 30, "O": 31, "U": 32, "LEFTBRACKET": 33, "I": 34, "P": 35, "ENTER": 36, "L": 37, "J": 38, "QUOTE": 39, "K": 40, "SEMICOLON": 41, "BACKSLASH": 42, "COMMA": 43, "SLASH": 44, "N": 45, "M": 46, "DOT": 47, "TAB": 48, "SPACE": 49, "GRAVE": 50, "BACKSPACE": 51, "ESCAPE": 53, "CAPSLOCK": 57, "F1": 122, "F2": 120, "F3": 99, "F4": 118, "F5": 96, "F6": 97, "F7": 98, "F8": 100, "F9": 101, "F10": 109, "F11": 103, "F12": 111, "HOME": 115, "PAGEUP": 116, "DELETE": 117, "END": 119, "PAGEDOWN": 121, "LEFT": 123, "RIGHT": 124, "DOWN": 125, "UP": 126]
 
 // Pure gesture state, exercised by --clipboard-state-test without OS input.
@@ -123,6 +132,8 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
     var menuPreview: KeypadPreview!
     var currentProfile: [String: Any]?
     var menuFingerprint = ""
+    var permissionGranted = AXIsProcessTrusted()
+    var permissionGate = PermissionPromptGate(requested: UserDefaults.standard.bool(forKey: "accessibilityPromptRequested"))
     var testTapActions: [[String: Any]]?
     var tapHotKeys: [EventHotKeyRef] = []
     var tapCounts: [Int: Int] = [:]
@@ -309,6 +320,12 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             if !error.isEmpty { currentName = "Needs attention" }
             summary = error.isEmpty ? "Setup cycling is off.\n\nOpen the editor to save and enable setups.\n\nThe keypad keeps its last written bindings. Reapply a normal layout to restore the dial press." : error
         }
+        permissionGranted = AXIsProcessTrusted()
+        if enabled, let bindings = currentProfile?["bindings"] as? [String: [String: Any]],
+           bindings.values.contains(where: { ["multi_tap", "copy_paste"].contains($0["type"] as? String ?? "") }), !permissionGranted {
+            currentName = "Enable device control"
+            summary = "macOS has not granted this build access. Open Device control permissions from this menu. If Dialpad is already enabled, remove its old entry and add the current Dialpad.app again."
+        }
         refreshMenu()
     }
 
@@ -316,7 +333,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         status.button?.title = " " + String(currentName.prefix(24))
         status.button?.toolTip = currentName + " · Click to view the keypad"
         menuPreview?.configure(profile: currentProfile, title: currentName, detail: summary)
-        let fingerprint = currentName + summary + String(enabled)
+        let fingerprint = currentName + summary + String(enabled) + String(permissionGranted)
         if fingerprint == menuFingerprint { return }
         menuFingerprint = fingerprint
         let menu = NSMenu()
@@ -328,6 +345,9 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         menu.addItem(.separator())
         let next = menu.addItem(withTitle: "Next setup", action: #selector(nextSetup), keyEquivalent: "")
         next.target = self; next.isEnabled = enabled
+        let access = menu.addItem(withTitle: permissionGranted ? "Device control access: enabled" : "Device control permissions…", action: #selector(permissionHelp), keyEquivalent: "")
+        access.target = self
+        menu.addItem(withTitle: "Show Dialpad in Finder", action: #selector(revealApp), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Open editor", action: #selector(showEditor), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit Dialpad", action: #selector(quit), keyEquivalent: "").target = self
         menu.autoenablesItems = false
@@ -360,17 +380,43 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         clipboardTimer?.cancel(); clipboardTimer = nil
         clipboardGesture = ClipboardGesture(); clipboardFocus = nil; clipboardBusy = false
     }
+    // Always query macOS; never cache an approval or repeatedly prompt from a key press.
+    func requireAccessibility() -> Bool {
+        permissionGranted = AXIsProcessTrusted()
+        if permissionGranted { return true }
+        resetClipboard()
+        if permissionGate.shouldPrompt(trusted: permissionGranted) {
+            UserDefaults.standard.set(true, forKey: "accessibilityPromptRequested")
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
+        }
+        currentName = "Enable device control"
+        summary = "macOS has not granted this build access. Use Device control permissions in this menu. If the switch is already enabled, remove the old Dialpad entry and add this app again. No key action was sent."
+        refreshMenu()
+        return false
+    }
+    @objc func permissionHelp() {
+        let alert = NSAlert()
+        alert.messageText = "Allow Dialpad to send your shortcuts"
+        alert.informativeText = "In System Settings → Privacy & Security → Device control & data access (called Accessibility on earlier macOS), enable Dialpad.\n\nIf it is already enabled but access still fails, remove the old Dialpad entry with −, then use + to add this current Dialpad.app. Show Dialpad in Finder from our menu to locate it. Reopen Dialpad if macOS asks.\n\nDialpad checks access automatically. Local unsigned-development rebuilds may require approval again; consistently signed releases preserve the app identity."
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+        }
+    }
+    @objc func revealApp() {
+        var location = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        while location.path != "/" && location.pathExtension != "app" { location.deleteLastPathComponent() }
+        if location.pathExtension == "app" { NSWorkspace.shared.activateFileViewerSelecting([location]) }
+    }
     func multiTap(_ key: Int) {
         guard enabled, !cycling, !clipboardBusy,
               let bindings = currentProfile?["bindings"] as? [String: [String: Any]],
               let action = bindings["key\(key)"], action["type"] as? String == "multi_tap",
               let focus = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
-        let prompt = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        guard testTapActions != nil || AXIsProcessTrustedWithOptions(prompt) else {
-            currentName = "Allow Accessibility"
-            summary = "Allow Dialpad in System Settings → Privacy & Security → Accessibility, then try the key again."
-            refreshMenu(); return
-        }
+        guard testTapActions != nil || requireAccessibility() else { return }
         let now = ProcessInfo.processInfo.systemUptime
         let delay = Double(action["window_ms"] as? Int ?? 350) / 1000
         if tapFocus[key] != focus { cancelTap(key) }
@@ -462,12 +508,7 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
         guard !clipboardBusy, !cycling,
               let bindings = currentProfile?["bindings"] as? [String: [String: Any]],
               let action = bindings.values.first(where: { $0["type"] as? String == "copy_paste" }) else { return }
-        let prompt = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        guard AXIsProcessTrustedWithOptions(prompt) else {
-            currentName = "Allow Accessibility"
-            summary = "Allow Dialpad in System Settings → Privacy & Security → Accessibility, then press Copy / Paste again."
-            refreshMenu(); return
-        }
+        guard requireAccessibility() else { return }
         let focus = NSWorkspace.shared.frontmostApplication?.processIdentifier
         if clipboardGesture.pending != nil && focus != clipboardFocus { resetClipboard() }
         let now = ProcessInfo.processInfo.systemUptime
@@ -581,6 +622,20 @@ final class Desktop: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUI
             }
         }
     }
+}
+
+if CommandLine.arguments.contains("--permission-state-test") {
+    var gate = PermissionPromptGate(requested: false)
+    precondition(gate.shouldPrompt(trusted: false))
+    for _ in 0..<20 { precondition(!gate.shouldPrompt(trusted: false)) }
+    precondition(!gate.shouldPrompt(trusted: true))
+    precondition(!gate.shouldPrompt(trusted: false)) // Revocation never triggers repeated dialogs.
+    var reopened = PermissionPromptGate(requested: gate.requested)
+    precondition(!reopened.shouldPrompt(trusted: false))
+    var alreadyAllowed = PermissionPromptGate(requested: false)
+    precondition(!alreadyAllowed.shouldPrompt(trusted: true))
+    print("Permission prompt checks passed: repeated keys, grant, revocation and relaunch; no OS prompt or input events.")
+    exit(0)
 }
 
 if CommandLine.arguments.contains("--tap-runtime-test") {

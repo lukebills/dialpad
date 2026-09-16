@@ -89,3 +89,11 @@ The frontend is plain HTML/CSS/JavaScript. `app.py` handles authenticated local 
 Protocol derived from the MIT-licensed [ch57x-keyboard-tool](https://github.com/kriomant/ch57x-keyboard-tool); its attribution is in `core/THIRD_PARTY_LICENSE.txt`. Bundled libusb is LGPL-2.1-or-later and dynamically loaded; see its licence and source/replacement instructions in `core/LIBUSB-LICENSE.txt` and `core/TRANSPORT-NOTES.md`. Python and PyInstaller bundle their runtime notices in the distribution where applicable.
 
 The supplier ZIP was inspected only as data and is excluded from Git and builds. See [initial review](research/REVIEW.md) and the archive hash inventory. It was never executed and has not been certified malware-free.
+
+### macOS device-control permission
+
+Copy/Paste and multi-tap delivery require **Privacy & Security → Device control & data access**, called **Accessibility** on earlier macOS. Dialpad checks the operating system's current permission on each action and while refreshing its menu; it never treats an old approval as permission. It requests the system prompt once, then shows a quiet menu status until access is granted. The menu provides **Device control permissions…** and **Show Dialpad in Finder**.
+
+If the switch is already enabled but the app still lacks access after a development rebuild, remove the stale Dialpad entry and add the current `Dialpad.app` again. Reopen the app if macOS requests it. This is necessary because ad-hoc signatures identify a specific binary build, not a stable publisher. Repeatedly toggling the stale entry may not repair that identity mismatch.
+
+For releases, set `DIALPAD_SIGNING_IDENTITY` to an installed Apple signing identity before running `build.py`; PyInstaller then signs the app and bundled executables with that identity. Reuse the same certificate identity and bundle identifier across updates. The local ad-hoc fallback explicitly warns that approvals may need renewal after rebuilding. A consistently signed release has not been validated here because this Mac has no valid code-signing identity. Do not weaken signing requirements or modify the macOS privacy database to bypass consent.
