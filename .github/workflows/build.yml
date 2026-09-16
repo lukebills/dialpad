@@ -3,9 +3,12 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+permissions:
+  contents: read
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -14,15 +17,38 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Check release version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          fi
       - run: python -m pip install -r requirements-build.txt
       - run: python -m unittest discover -s tests -v
       - run: python build.py
+      - if: runner.os == 'Windows'
+        run: python scripts/smoke_windows_package.py
       - if: runner.os == 'macOS'
-        run: ditto -c -k --sequesterRsrc --keepParent dist/Dialpad.app dist/Dialpad-mac.zip
+        run: codesign --verify --deep --strict dist/Dialpad.app
+      - run: python scripts/package_release.py
       - uses: actions/upload-artifact@v4
         with:
           name: Dialpad-${{ runner.os }}
-          path: |
-            dist/*.zip
-            dist/*-source.tar.gz
-            dist/Dialpad/
+          path: dist/release/*
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --title "Dialpad $GITHUB_REF_NAME" --notes-file RELEASE-NOTES.md

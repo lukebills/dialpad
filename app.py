@@ -258,6 +258,7 @@ def reopen_existing_instance(session_path):
 def main():
     global SETUPS
     parser = argparse.ArgumentParser()
+    parser.add_argument('--version', action='version', version=(ROOT / 'VERSION').read_text(encoding='utf-8').strip())
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--port', type=int, default=0)
     parser.add_argument('--settings-dir', type=Path, help='Optional separate directory for saved layouts.')

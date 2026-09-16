@@ -7,10 +7,16 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import plistlib
+import re
 
 ROOT = Path(__file__).parent.resolve()
+release_version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
+if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', release_version):
+    raise SystemExit('VERSION must contain major.minor.patch.')
 args = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--name', 'Dialpad',
         '--onedir', '--windowed', '--add-data', f'{ROOT / "ui"}:ui',
+        '--add-data', f'{ROOT / "VERSION"}:.',
         '--add-data', f'{ROOT / "assets" / "app-icon.png"}:assets',
         '--add-data', f'{ROOT / "core" / "THIRD_PARTY_LICENSE.txt"}:licenses',
         '--hidden-import', 'core.protocol', '--hidden-import', 'core.transport']
@@ -59,10 +65,21 @@ if sys.platform == 'darwin':
 elif sys.platform != 'win32':
     raise SystemExit('Build on macOS or Windows to create a portable app for that OS.')
 else:
+    version_file = ROOT / 'build' / 'windows-version.txt'
+    version_file.parent.mkdir(parents=True, exist_ok=True)
+    numbers = tuple(map(int, release_version.split('.'))) + (0,)
+    version_file.write_text(f"""VSVersionInfo(ffi=FixedFileInfo(filevers={numbers}, prodvers={numbers}, mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)), kids=[StringFileInfo([StringTable('040904B0', [StringStruct('FileDescription','Dialpad'), StringStruct('FileVersion','{release_version}'), StringStruct('ProductName','Dialpad'), StringStruct('ProductVersion','{release_version}'), StringStruct('OriginalFilename','Dialpad.exe')])]), VarFileInfo([VarStruct('Translation',[1033,1200])])])""", encoding='utf-8')
+    args += ['--version-file', str(version_file)]
     args += ['--icon', str(ROOT / 'assets' / 'Dialpad.ico'), '--add-data', f'{ROOT / "assets" / "Dialpad.ico"}:assets']
     args += ['--hidden-import', 'core.windows_desktop', '--hidden-import', 'tkinter']
 args.append(str(ROOT / 'app.py'))
 subprocess.run(args, cwd=ROOT, check=True)
 if sys.platform == 'darwin':
+    bundle = ROOT / 'dist' / 'Dialpad.app'
+    info_file = bundle / 'Contents' / 'Info.plist'
+    info = plistlib.loads(info_file.read_bytes())
+    info.update(CFBundleShortVersionString=release_version, CFBundleVersion=release_version, LSMinimumSystemVersion='12.0')
+    info_file.write_bytes(plistlib.dumps(info))
+    subprocess.run(['codesign', '--force', '--sign', identity or '-', *(['--options', 'runtime'] if identity else []), str(bundle)], check=True)
     shutil.copy2(ROOT / 'vendor' / 'libusb-1.0.30-source.tar.gz', ROOT / 'dist')
 print(f'Built Dialpad for {platform.system()} {platform.machine()} in {ROOT / "dist"}')

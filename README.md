@@ -1,6 +1,26 @@
 # Dialpad
 
-A local six-key + dial configurator for AI coding. Built for the `1189:8890` CH57x-2 keypad family, with Claude Code and Codex starter layouts. Native Mac window and menu-bar companion, local USB connection, no cloud service or account.
+Dialpad is a customizable, local app for **mini six-key keyboards with one clickable rotary dial**—the inexpensive USB macro keypads commonly sold on AliExpress as “6 Keys 1 Knob” or “Mini 6-key keyboard”. It provides a simpler alternative to the manufacturer's configuration software, with editable keys, dial actions and layouts for AI coding, media, browsing, Word and email.
+
+The source code is available here to customize and build yourself. The packaged apps are designed for **Windows and macOS**: a portable **EXE with its supporting folder on Windows**, and an **app bundle on Mac**. You do not need Python or the manufacturer's software to run a package. It works locally with no cloud account.
+
+### Compatible keyboards
+
+This project targets the **CH57x-2 family with USB vendor/product ID `1189:8890`**, using six keys and one dial that turns and presses. That is the family used during development. AliExpress sellers can reuse the same product photographs for different hardware or firmware, so six keys and a knob alone do **not** guarantee compatibility. Confirm the USB identity and test discovery before applying a layout. Windows programming on physical hardware still needs validation; Mac testing does not establish support for every similar keypad.
+
+### Download version 0.1.0
+
+Get the portable packages from [GitHub Releases](https://github.com/lukebills/dialpad/releases/tag/v0.1.0). On a **Windows PowerShell terminal**, run:
+
+```powershell
+curl.exe -fL "https://github.com/lukebills/dialpad/releases/download/v0.1.0/Dialpad-0.1.0-windows-x64.zip" -o Dialpad-0.1.0-windows-x64.zip
+Expand-Archive -Path .\Dialpad-0.1.0-windows-x64.zip -DestinationPath .\Dialpad-0.1.0
+Start-Process .\Dialpad-0.1.0\Dialpad\Dialpad.exe
+```
+
+Extract the **whole archive** and keep the EXE beside its supporting files. No installer or administrator elevation is requested by Dialpad. The Windows executable is unsigned, and workplace policies may still restrict it. Matching `.sha256` checksum files are included in the release.
+
+For Mac, download the archive matching your Mac's architecture and open `Dialpad.app`. The GitHub-built Mac app is ad-hoc signed and not notarized. Local development builds can use your own configured Apple signing identity. **macOS device-control permission is required for app-managed key actions.**
 
 ## Run on this Mac
 
@@ -77,7 +97,7 @@ python3 -m venv .venv
 
 Mac builds require Python 3.12+ and the Xcode command-line tools to compile the Swift desktop host and vendored libusb source for a macOS 12 deployment target. This removes dependence on Homebrew’s binary deployment target; older-macOS runtime behavior still needs testing. Source-only launches use the browser unless the native host is supplied; `--no-browser` is available for test harnesses.
 
-On Windows use `.venv\Scripts\python.exe` in place of `.venv/bin/python`. Build on each target OS; PyInstaller does not cross-compile. Windows output is `dist/Dialpad/` (keep the EXE and its supporting files together). Mac output is `dist/Dialpad.app`. The GitHub Actions workflow can build both after this repository is hosted on GitHub; no remote is configured automatically.
+On Windows use `.venv\Scripts\python.exe` in place of `.venv/bin/python`. Build on each target OS; PyInstaller does not cross-compile. Windows output is `dist/Dialpad/` (keep the EXE and its supporting files together). Mac output is `dist/Dialpad.app`. The GitHub Actions workflow builds and tests both target platforms, packages versioned ZIP files with checksums, and publishes a release when a version tag is pushed.
 
 The app icon is an original editable SVG in `ui/icon.svg`. Generated Mac, Windows and PNG icons are in `assets/`; `assets/render_icon.py` regenerates them with Playwright/Chrome and the macOS icon tools. The native host also uses a small template keypad symbol in the menu bar.
 
